@@ -1,0 +1,37 @@
+# Boundary concentrations for the exchange term in run_box.py:
+#   dC/dt += (Q_river/V) (C_river - C) + (Q_ocean/V) (C_ocean - C)
+#
+# PLACEHOLDER values -- replace with Drammenselva and outer-fjord (Svelvik / Oslofjord) observations.
+#
+# Units (converted by run_box.py to ECOSMO units):
+#   no3, nh4: umol N/L     pho: umol P/L     sil: umol Si/L     oxy, dic, alk: umol/L (= mmol/m3)
+#   fla, dia, microzoo, mesozoo, det, dom, opa, cal: mgC/m3     flachl, diachl: mgChl/m3
+# Interior state variables not listed here get boundary concentration 0 (pure dilution).
+
+river:            # Drammenselva
+  no3: 18.0
+  nh4: 1.0
+  pho: 0.15
+  sil: 60.0
+  oxy: 350.0
+  dic: 200.0
+  alk: 150.0
+  det: 20.0
+  dom: 10.0
+
+ocean:            # outer fjord water entering over the sill
+  no3: 8.0
+  nh4: 0.5
+  pho: 0.7
+  sil: 10.0
+  oxy: 280.0
+  dic: 2050.0
+  alk: 2150.0
+  fla: 2.0
+  dia: 2.0
+  flachl: 0.1
+  diachl: 0.1
+  microzoo: 1.0
+  mesozoo: 1.0
+  det: 5.0
+  dom: 5.0

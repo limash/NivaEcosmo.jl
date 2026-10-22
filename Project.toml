@@ -1,0 +1,25 @@
+name = "NivaEcosmo"
+uuid = "0fe4996b-995b-40d0-a594-b88dbf63442d"
+version = "0.1.0"
+authors = ["sia <shamil.iakubov@niva.no> and contributors"]
+
+[deps]
+Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
+KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
+OceanBioME = "a49af516-9db8-4be4-be45-1dad61c5a376"
+Oceananigans = "9e8cae18-63c1-5223-a75c-80ca9d6e9a09"
+YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
+
+[compat]
+Adapt = "4"
+KernelAbstractions = "0.9"
+OceanBioME = "0.20"
+Oceananigans = "0.113"
+YAML = "0.4"
+julia = "1.11"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

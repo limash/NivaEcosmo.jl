@@ -1,0 +1,28 @@
+# Manifests: this is a package, so each environment resolves its own
+/Manifest*.toml
+/box_model/Manifest*.toml
+
+# Box model output
+/box_model/output*.nc
+/box_model/*.png
+
+# Coverage and allocation tracking (julia --code-coverage, --track-allocation)
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+*.info
+
+# Package build artifacts
+/deps/deps.jl
+/deps/build.log
+/deps/downloads/
+/deps/usr/
+/deps/src/
+
+# Documenter.jl
+/docs/build/
+/docs/site/
+/docs/Manifest*.toml
+
+# Machine-specific preferences (Preferences.jl, e.g. CUDA runtime choice)
+LocalPreferences.toml

@@ -1,0 +1,529 @@
+# box_model/fabm.yaml
+#
+# niva-ecosmo configuration for a single-box (0D) model of Drammensfjorden, run with box_model/run_box.py (pyfabm).
+#
+# Copied from example_configs/a20_v3aa/fabm_a20_v3aa.yaml (21/10/2026). All ECO parameters are unchanged.
+# Changes for the box setup (search for "BOX:"):
+#   - light/g2 lowered (turbid, CDOM-rich fjord water) -- placeholder, to be tuned to observations
+#   - use_aice: false in ECO and CO2 (no ice in the first version)
+#   - initial values: Drammensfjorden placeholders (winter conditions)
+#
+# The A20 change history and parameter notes are kept below for reference.
+#
+# fabm_a20_v3aa.yaml
+#
+# Adaptation of ECOSMO model for northern latitudes (A20 pan-Arctic domain >~50N), version 3aa.
+#
+# Phil Wallhead (PJW), NIVA Bergen, 10/07/2026
+#
+#
+# Change history
+# --------------
+#
+# PJW 26/07/2025: Copied from /fabm/testcases/fabm-nersc-ecosmo.yaml.
+#                 Following removal of cyanobacteria code, removed switch use_cyanos and cyano parameters.
+#                 Regularized some parameter names (small changes, mostly on capitalization).
+#                 Switched off carbonate chemistry (needs updating to use ERSEM/NERSEM code).
+#                 Removed switch to turn on additional diagnostics.
+#                 Added module niva/niva_ecosmo_carbonate.
+#                 -> A20v3q
+# PJW 09/04/2026: Reordered to fit the revised niva_ecosmo FABM code.
+#                 This should gives similar results to v3q.
+#                 -> A20v3qc
+# PJW 13/04/2026: Optimized Ps/Pl parameters to incubation datasets for net growth rate and Chl:C
+#                 (see fit_model_nanoP_growth.m, fit_model_diatom_growth.m).
+#                 For Ps we fitted (muPs,alfaPs,MAXchl2cPs) while for Pl we fitted (muPl,gammaDPl,alfaPl,betaPl,MAXchl2cPs).
+#                 Q_10 temperature coefficients were fixed at the standard value 2.0, since fitting these
+#                 parameters did not give a significant improvement in AICc (relative to fixing at 2.0).
+#                 Ps data were not sufficient to fit (gammaDPs,betaPs) so these were fixed at
+#                 standard values of (0.25,0.3).
+#                 Pl minimum Si concentration for Si uptake was set to zero (minSiPl = 0) to conform
+#                 with other biogeochemical models.
+#                 NOTE! The setting minSiPl = 0 mmolSi/m3 is adopted as a new default. This means that
+#                       fabm.yaml files will need to specify minSiPl = 1 mmolSi/m3 for legacy simulations.
+#                 Ps/Pl coefficients for the increase in mortality due to complete nutrient limitation
+#                 (amortPs,amortPl) are set to 10.0 following the hard-coded values in ERSEM (B16).
+#                 For (Ps,Pl) mortality rates, we keep the previous/default values (0.08,0.04) d-1 for the linear
+#                 rates (as assumed within optimization). For the new quadratic terms (neglected within
+#                 incubation setting) we choose conservative default values of 0.0005 m3/mgC/d based on
+#                 literature values (Doney et al., 1996; Yool et al., 2013; Feng et al., 2015):
+#                 P[mgC/m3]     mort2P[d-1]    mort2P(D96)[d-1]    mort2P(Y13)[d-1]    mort2P(F15)[d-1]
+#                 1.0           0.0005         0.0013              0.0025              0.0004
+#                 100           0.05           0.13                0.07                0.04
+#                 Above, for F15 values we have assumed that small detritus = 5x phytoplankton.
+#                 Dissolved fractions for linear phytoplankton mortality (frmort1Ps,frmort1Pl)
+#                 are set at 0.4, consistent with previous flat value (frr) for all mortality/egestion
+#                 (note that in ERSEM this fraction is dependent on internal nutrient stoichiometry
+#                 with lowest values (highest particulate fraction) under nutrient limitation).
+#                 Dissolved fractions for quadratic phytoplankton mortality (frmort21Ps,frmort2Pl)
+#                 are also set to (0.3,0.2) for now. This assumes that some of the quadratic mortality
+#                 is due to viral lysis (e.g. Yool et al., 2013), which should produce mostly DOM,
+#                 while some will be due to aggregation-mortality, which should produce POM
+#                 (note, in NERSEM the quadratic mortality came exclusively from aggregation-mortality
+#                 and produced only POM).
+#
+#                 Zs parameter values are not presently optimized due to expected high heterogeneity of the
+#                 'small zooplankton' assemblage (i.e. dinoflagellates vs. ciliates).
+#                 As a first attempt we keep the default values of 1.0 d-1 for maximum grazing rates
+#                 (GrZsPs, GrZsPl, GrZsD), but add a lower capacity for group-level cannibalism setting
+#                 GrZsZs = 0.5 d-1 (default = 0.0).
+#                 Zs prey preferences follow previous nersc values, rescaled to have max. value = 1.0 and setting
+#                 small preference values 0.20 for Zs prey (default value 0.0).
+#                 Zs grazing half saturation constant RgZs was kept at the previous nersc value, corrected
+#                 for the rescaling of preference parameters.
+#                 Zs grazing Q10 value q10Zl was set to 2.0 as a standard value.
+#                 Zs assimilation efficiency was left at the default value of 0.75 for plankton prey (gammaZsP),
+#                 as a plausible compromise between ciliates (highly efficient) and dinoflagellates (less efficient),
+#                 while for detritus prey a lower value gammaZsD=0.5 was assumed to account for lower food quality.
+#                 Zs dissolved fraction of egesta fregesZl is left at 0.4 = previous flat value (frr).
+#                 Zs basal excretion/resp. rate was set to 0.02 d-1, consistent with Zl value (see below).
+#                 Zs dom fraction of excreta fexcdomZs was set to 0.5, consistent with Zl value (see below).
+#                 Zs mortality rate was set to 0.05 d-1, consistent with basal rates in ERSEM (B16) without
+#                 oxygen limitation (see note for Zl below).
+#                 Zs Q10 value for mortality q10mZs was set to 2.0 as a standard value, and the dissolved
+#                 fraction of Zs mortality frmortZs was set to the previous flat value (frr = 0.4).
+#
+#                 Zl parameter values (GrZlPl=0.60, fAexcZl=0.37) are optimized to incubation growth/grazing
+#                 rate experimental results for biomass-dominant copepod species in northern regions
+#                 (see fit_model_mesoZ_growth.m). Maximum grazing rates on other groups are fixed at values
+#                 (GrZlPs=0.60, GrZlZs=0.40, GrZlZl=0.20, GrZlD=0.60) assuming a size-based pattern
+#                 of relative grazing efficiency, with zooplankton prey (especially Zl) grazed less
+#                 efficiently due to higher capacity for evasion and defence. 
+#                 Zl prey preferences are revised to simplified estimates based on the literature, which
+#                 broadly supports a downweighting of ~0.5 for flagellates/coccolithophores prey vs.
+#                 diatom/dinoflagellate/ciliate prey (Castellani et al. 2008; Mayor et al., 2006), and a
+#                 lower preference for Zl prey (0.25) in view of a minimum predator:prey ratio of ~5 for Cal. fin.
+#                 in Hansen et al. (1994). Detritus preference was set to 0.5 consistent with ERSEM B16.
+#                 Zl grazing half saturation constant RgZl was was kept at the previous nersc value, corrected
+#                 for the rescaling of preference parameters (RgZl = 33 mgC/m3). This is consistent with
+#                 a literature-based estimate of 40 mgC/m3 based on Campbell et al. (2001, Fig. 8) results
+#                 for Cal. fin. (nauplii and copepodites) fed on mixed phytoplankton (G. sanguineum + H. triquetra).
+#                 Zl grazing Q10 value q10Zl was set to 2.8 following Hansen et al. (1997), as assumed in the
+#                 growth/grazing rate optimizations.
+#                 Zl grazing slopped fractions are set to values 0.1-0.4, with higher values for larger
+#                 prey following results Møller (2007).
+#                 Zl assimilation efficiency for plankton prey (gammaZlP) was set to 0.7 following Steinberg and Landry (2017),
+#                 while for detritus prey a lower value gammaZlD=0.5 was assumed to account for lower food quality.
+#                 Zl dissolved fraction of egesta fregesZl is set to 0.2, since mostly fecal pellet material.
+#                 Zl basal excretion/resp. rate was set to 0.02 d-1 following Blackford et al. (2004)
+#                 and for consistency with experimental results from Kiørboe et al. (1985) (see note below).
+#                 Zl dom fraction of excreta fexcdomZl was set to 0.5, for consistency with K85 (see note below).
+#                 Zl basal mortality rate mZl was set to 0.02 d-1 following Yool et al. (2013) with max. extra mortality
+#                 rate of mvZl = 0.04 d-1 due to visual predation. These values were set to roughly span
+#                 observed ranges (Ohman et al., 2004; Huse et al., 2018) although the latter may be including
+#                 significant mortality due to cannibalism. These values imply a max. 3-fold increase with increasing
+#                 irradiance, cf. the max. 10-fold increase assumed by Bandara et al. (2018).
+#                 NOTE: We do not yet have the effect of low oxygen saturation to increase zooplankton
+#                       mortality --- this should be included in a future update.
+#                 Zl half-saturation PAR for visual predation mortality was set to 10 umol quanta/m2/s = 2.2 W/m2,
+#                 consistent with the fitted value of 10 umol quanta/m2/s from Aksnes et al. (1997).
+#                 Zl Q10 value for mortality q10mZl was set to 2.0 as a standard value, and the dissolved
+#                 fraction of Zl mortality frmortZl was set to a lower value of 0.2 to account for the
+#                 more-particulate nature of egestion and mortality fluxes from higher predators.
+#
+#                 NOTE: Kiørboe et al. (1985) measured respiration rates for Acartia tonsa feeding on
+#                 Rhodomonas balticum. Here the prey ESD (ca. 8 mum) << predator ESD, so it seems reasonable
+#                 to neglect DOC production by sloppy feeding (Møller, 2007). They found:
+#                   Resp[ngC/mugdw/d] = 0.07*Ingestion[ngC/mugdw/d] + 33     (Fig. 9a)
+#                 This suggests that activity respiration is in fact only 7% of ingestion, which is consistent
+#                 with the the ECOSMO fraction assuming fexcdomZ = 0.5. If we assume further that
+#                 carbon/(dry weight) = 0.45 (see Table 1 in K85), then:
+#                   Rest respiration rate = 33*1e-3 [gC/gdw/d] / 0.45 [gC/gdw] = 0.073 d-1 at 18 degC
+#                 Assuming q10Zl = 2.8 (Hansen et al., 1997) this gives an estimate for basal respiration rate:
+#                   Basal respiration rate = 0.073/(2.8^((18-10)/10)) = 0.03 d-1
+#                 However, K85 also observed lower respiration rates after starvation, and therefore excluded
+#                 this data point from the linear regression relationship Resp~Ingestion. The excluded data
+#                 point was ca. 0.5x the linear model value. Given a simple ECOSMO model with no adaptation
+#                 to starvation conditions, it seems reasonable to adopt a slightly lower value for the
+#                 basal excretion/respiration rate at 10 degC: excZ = 0.02 d-1. 
+#
+#                 Review of literature values for photosynthetic/respiration quotients suggested:
+#                 PQ (molO2/molC) = 1.0 - 1.25 (Sanz-Martin et al., 2019, for Arctic species)
+#                 PQ (molO2/molC) = 1.1 - 1.4 (Laws, 1991, based on chemical equations)
+#                 PQ (molO2/molC) = 1.0 - 1.8 (Burris, 1981, measure on 2 species, O2-dependent)
+#                 -> chosen value eta_PQ = 1.1.
+#                 RQ (molO2/molC) = 1.39 (Stephens et al., 2025, bacteria, measured)
+#                 RQ (molO2/molC) = 0.8 - 1.6, ~1.1 @ 50N (Moreno et al., 2022, measured from POM degradation)
+#                 RQ (molO2/molC) = 1.4  (Tanioka and Matsumoto, 2020, satellite data, nutrient objective analysis)
+#                 -> chosen value eta_O2resp = 1.4.
+#                 For eta_denit we use the new default value of 5.3 (=old default, see notes in niva_ecosmo.F90).
+# 
+#                 Elsewhere we have kept the nersc parameters used in fabm-nersc-ecosmo.yaml (or hard-coded).
+#                 -> A20v3r
+# PJW 08/05/2026: Added parameters for the new calcification / dissolution processes associated with the
+#                 new detrital calcite state variable. Here we follow the parameter values used in (N)ERSEM (B16).
+#                 (Rain0=1.0,Kcalom=1.0) based on fit-by-eye to experimental data from Gehlen et al. (2007), Fig. 1.
+#                 Zs internal dissolution fraction fdissCZs = 0.5 consistent with observed higher fractions of
+#                 within microzooplankton relative to mesozooplankton (Dean et al., 2024).
+#                 Zl internal dissolution fraction fdissCZl = 0.25 based on observed max fractions of 0.38 reducing
+#                 with time due to increasing buffer effect (White et al, 2018).
+#                 Parameter values for pelagic calcite dissolution (dissCmax=0.03 d-1, ndissC=2.22) and sedimentary
+#                 calcite dissolution (dissSEDCmax=30.0 d-1, dissSEDCmin=0.05 d-1, ndissSEDC=2.22) follow ERSEM B16.
+#                 Burial rate parameters for calcite (burialRtC, burialRt2C) follow the previous nersc values that
+#                 were applied uniformly to sedimentary detritus, opal, and calcite.
+#                 -> A20v3s
+# PJW 21/05/2026  1) Increased silicate half saturation constant for Pl (rSiPl: 0.5 -> 1.0 mmolSi/m3).
+#                 Literature suggests values mostly in ranges 0.8-3.4 mmolSi/m3 for Nordic diatoms (Paasche, 1973),
+#                 1.1-4.6 mmolSi/m3 for Antarctic diatoms (Nelson and Treguer, 1992), and 0.8-2.5 mmolSi/m3 for diatoms
+#                 in the Svalbard region (Krause et al., 2018). Note that although Paasche (1973) does support
+#                 a threshold parameter minSiPl in range 0-1 mmolSi/m3, these are based on experiments with single
+#                 species and it seems likely that the community-level threshold effect would be small (since species
+#                 with lower minSiPl will dominate at low Si concentrations). Note that Y13 uses a half saturation
+#                 value of 3 mmolSi/m3, while A15 models a range 1-8 mmolSi/m3 dependent on diatom biomass and
+#                 annual-average Si concentration. The A20v3s simulation also suggested too-low surface silicate
+#                 in Nordic and North Sea regions, suggesting excessive drawndown by Pl, notably at the Irminger Sea
+#                 station where the A20 physical model is performing best.
+#                 2) Added linear depth dependences (cz_sinkD,cz_sinkOPAL,cz_sinkCAL) for the particulate sinking rates,
+#                 setting a uniform value of 0.039 d-1 to achieve a speed increase from 5 m/d to 195 m/d between surface
+#                 and 5000 m depth (approximately following A15 and Middelburg, 2019).
+#                 3) Added Ridgwell et al. (2002) model for water colum opal dissolution rate as a function of
+#                 temperature and degree of undersaturation, following PISCES model (A15) and NERSEM model.
+#                 The parameter dissO now defines the rate at 0 degC and full undersaturation (sil=0), and we set its
+#                 value to 0.019 d-1 following Ridgwell et al. (2002).
+#                 4) Increased sediment opal dissolution rate dissSEDO: 0.0002 -> 0.0005 d-1.
+#                 Literature suggests a range 0.0002-0.002 d-1 for sediment core tops, with lower values mostly
+#                 driven by elevated Al/Si ratio associated with lithogenic (mineral) sediment deposition, which
+#                 should be largest in coastal/shelf regions (Van Cappellen et al., 2002; Ridgwell et al., 2002;
+#                 Sarmiento and Gruber, 2006). A further downward correction should be made for the overall sediment
+#                 rate due to a decrease with depth in sediments, but this should be at most a 50% reduction according
+#                 to Eqn. 10 in Ridgwell et al. (2002). Note the dissolution rate also increases with bottom temperature
+#                 and degree of Si undersaturation, but since these both increase towards coast/shelf regions, their
+#                 effects are likely counterracted by an increase in Al/Si ratio --- therefore we keep the simple
+#                 flat rate constant for now in lieu of a sediment module to account for Al/Si variations.
+#                 5) Increased phytoplankton dissolved fractions of mortality by 0.1 (0.2 for Ps linear mortality)
+#                 (frmort1Ps:0.4->0.6, frmort2Ps:0.3->0.4, frmort1Pl:0.4->0.5, frmort2Ps:0.2->0.3).
+#                 This is to compensate an expected increase in the removal of surface dissolved nutrients due to
+#                 the increase in sinking rates of particulate detritus (see (2)), while keeping the overall average
+#                 close to the original flat value of 0.4.
+#                 6) Increased detritus basal remineralization rate reminD: 0.003 -> 0.006 d-1, to further compensate
+#                 the reduced supply of remineralized nutrients to surface layers due to increased sinking speeds.
+#                 Note: This restores the original value used in DS13.
+#                 Note: The increased remineralization rate should still allow time for particles to reach deep waters.
+#                 For example to reach 5000 m depth with the linear sinking speed dependence requires
+#                 T = 1/cz_sink * log((sink+cz_sink*5000)/sink) = 95 days with current parameter values,
+#                 while the remineralization timescale 1/reminD is now 167 days (at T = 0 degC). The fact that observed
+#                 sinking speeds tend to be rather larger than currently modelled (Berelson, 2002; Villa-Alfageme et al., 2016)
+#                 suggests that further increases in reminD may be realistic.
+#                 -> A20v3u
+# PJW 30/05/2026  1) Reduced Ps linear mortality to match the value for Pl: m1Ps: 0.08 -> 0.04 d-1.
+#                 Comparisons with NO3/PO4/DIC observations from station IRM over the surface 0-50 m layer suggested
+#                 a defecit of seasonal nutrient and DIC drawdown, hence primary production. It seems most likely this
+#                 reflects a defecit of small phytoplankton production, since a defecit of large phytoplankton production
+#                 would likely result in too little silicate drawdown, which is not observed.
+#                 Comparisons with NO3/PO4/DIC observations from station IRM at depths 200 and 600 m suggested a defecit of
+#                 deep remineralization fluxes in both v3s and v3u (stronger in v3u) possibly driven in part by a defecit in
+#                 Ps production and Ps-derived secondary production.
+#                 Also it was never clear the argument for having a larger mortality rate for small vs. large phytoplankton
+#                 and this feature is not found in (ERSEM, PISCES, MEDUSA) parameterizations, which assume similar values
+#                 for small and large groups (B16, A15, Y13).
+#                 This change entailed redoing the optimization to experimental incubation data, assuming the reduced mortality
+#                 rate within the experiments for consistency. This in fact achieved a significant AICc reduction (4.8 units).
+#                 As expected, this refit gave compensatory reductions in maximum growth rate muPs: 1.51 -> 1.47 d-1
+#                 and initial slope of P-I curve alfaPs: 4.62 -> 4.20 mgC/(mgChl day W/m2), while maximum Chl:C was little affected
+#                 (MAXchl2cPs: 0.0325 -> 0.0322 mgChl/mgC). Due to these compensatory changes it is not clear if the mortality
+#                 rate reduction will have the desired affect of increasing Ps productivity in the A20 simulation.
+#                 2) Reduced aerobic respiration quotient eta_O2resp: 1.4 -> 1.2 molO2/molC.
+#                 Despite the apparent defecit of deep remineralization, the O2 at 200 and 600 m at IRM station was too low
+#                 relative to observations, in both v3s and v3u. We can expect this to be exacerbated by modification (1),
+#                 therefore a significant reduction in the RQ value seems likely to be needed.
+#                 Reducing to 1.2 molO2/molC brings the quotient into agreement with ERSEM B16, while still remaining
+#                 consistent with observed ranges from the literature (see above).
+#                 -> A20v3v
+# PJW 31/05/2026  The v3v simulation still seemed to show a defecit of surface nutrient/DIC drawdown, although given
+#                 the slightly-too-low simulated summertime temperature, this might be partly attributed to excessive
+#                 vertical mixing towards summer. Another possibility is that the microzooplankton population may be too
+#                 responsive and excessively controlling the Ps blooms towards summertime.
+#                 Reviewing the microzooplankton grazing preferences, it was hard to make sense of the values inhereted
+#                 from the nersc original and default values, which are strongly weighted towards Ps as preferred prey.
+#                 Comparing with the values from NERSEM there seems to be a contradiction: the Zs maximum growth rate
+#                 suggests (micro)dinoflagellates as a dominant subgroup, but the strong preference for Ps is more consistent
+#                 with the ciliates subgroup. We therefore modified the preferences for better agreement with (N)ERSEM
+#                 where the Z5 group is a generalist with stronger preference for Pl and Zs prey (inc. group-level cannibalism):
+#                 prefZsPl: 0.35 - > 0.50; prefZsZs: 0.20 - > 0.50; prefZsD: 0.12 - > 0.25;
+#                 -> A20v3w
+# PJW 09/06/2026  The apparent defecit of DIC drawdown at IRM station in the v3w simulation raised questions regarding
+#                 parameter Exphy for the chlorophyll-specific diffuse attenuation of PAR (could be too high).
+#                 Reviewing the literature suggested that this 'parameter' was strongly correlated to total chlorophyll
+#                 (Morel, 1988), most likely due to the variations in phytoplankton community structure and pigment
+#                 packaging effects, whereby larger cells/chloroplasts have lower specific attenuation. We therefore
+#                 try using group-specific attenuation coefficients (ExPs=0.03, ExPl=0.015) m2/mgChl based on NERSEM
+#                 estimates in turn derived from Johnsen and Sakshaug (2007) experimental data, approximating Kd as
+#                 absorption, and KdPAR ~ Kd490 (Morel et al., 2007; Wang et al., 2009; Zapata-Hinestroza et al., 2025).
+#                 Furthermore, to avoid excessive silicate drawdown with the increased diatom productivity (and in light
+#                 of initial simulation results at IRM), we increase the half-saturation constant rSiPl: 1 -> 2 mmolSi/m3,
+#                 which is still close to the middle of the ranges of experimental and model values (see above):
+#                 -> A20v3x
+# PJW 10/07/2026  The modifications for v3x succeeding in producing more realistic nutrient drawdown levels, but the
+#                 overall simulation quality was not improved, likely due to limitations in the physics (upper layer mixing)
+#                 that are partly compensated by the less-realistic representation of light extinction in v3w.
+#                 We therefore revert the changes v3w->v3x for now, noting that they should be considered again
+#                 in future models with different physics.
+#                 The v3w configuration is modified to include:
+#                 1) Losses to coupled nitrification-denitrification in oxic sediments amounting to 50% of the total
+#                 remineralization flux (new parameter gammaND = 0.5), following (Neumann, 2000; Stigebrandt and Wulff, 1987; Balzer 1984)
+#                 assumption which seems to be independently validated by (Kemp et al., 1990; Bohlen et al., 2012).
+#                 We adopt the nersc parameterization of the O2-dependence of this loss flux (KO2nitrifSED = 4.5 mmolO2/m3).
+#                 2) Bug fix in niva_ecosmo.F90 (10/07/2026), though this only affects conditions with bottom O2<=0 and should
+#                 therefore have little impact on the A20 simulation.
+#                 3) Added PAR-dependence of nitrification in the water column, using a 2-parameter function based on
+#                 (A15, Shiozaki et al., 2019) (see fit_Shiozaki_nitrification_data.m).
+#                 Note that the fitted half-inhibition value of 7 W/m2 seems to be a quite conservative estimate of PAR
+#                 sensitivity compared to the value 1 W/m2 used in A15, and Copilot-based estimates.
+#                 Note that ERSEM B16 does not include PAR-sensitivity of nitrification, but rather a nonlinear dependence on
+#                 NH4 concentration that likely has a similar effect (to switch off nitrification in surface layers in summer).
+#                 -> A20v3y
+# PWA 28/08/2026  After fixing the erroneous time stamps for atmospheric data read by CICE (->v3z), we decided to replace the
+#                 Wroblewski-Fasham formulation with the substrate-based parameterization of PISCES, ERSEM (A15, B16), removing
+#                 the poorly-constrained parameters (psiPs, psiPl) (see niva_ecosmo.F90 update 28/08/2026). This change was
+#                 motivated by clear defecit/excess of NO3/NH4 uptake in MARTINI800v11c.
+#                 -> A20v3aa
+#
+#
+#References (short form)
+#
+# Aksnes et al. (1997), doi:10.1080/00364827.1997.10413647
+# Aumont et al. (2015) (A15), doi:10.5194/gmd-8-2465-2015
+# Balzer (1984),  doi:10.4319/lo.1984.29.6.1231
+# Bandara et al. (2018), doi:10.1016/j.ecolmodel.2017.12.010
+# Berelson (2002), doi:10.1016/S0967-0645(01)00102-3
+# Blackford et al. (2004), doi:10.1016/j.jmarsys.2004.02.004
+# Bohlen et al. (2012), doi:10.1029/2011GB004198
+# Burris (1981), doi.org/10.1007/bf00397114
+# Butenschon et al. (2016) (B16), doi:10.5194/gmd-9-1293-2016
+# Campbell et al. (2001), doi:10.3354/meps221161
+# Castellani et al. (2008), doi:10.1093/plankt/fbn074
+# Daewel and Schrum (2013) (D13), doi:10.1016/j.jmarsys.2013.03.008
+# Dean et al. (2024), doi:10.1126/sciadv.adr5453
+# Doney et al. (1996), doi:10.1016/0967-0645(95)00104-2
+# Feng et al. (2015) (F15), doi:10.1002/2015JG002931
+# Gehlen et al. (2007), doi:10.5194/bg-4-505-2007
+# Hansen et al. (1997), doi:10.4319/lo.1997.42.4.0687
+# Huse et al. (2018), doi:10.3389/fevo.2018.00023
+# Johnsen and Sakshaug (2007), doi:10.1111/j.1529-8817.2007.00422.x
+# Kemp et al. (1990), doi:10.4319/lo.1990.35.7.1545
+# Kiørboe et al. (1985) (K85), doi:10.3389/fmars.2023.1134792
+# Krause et al. (2018), doi:10.5194/bg-15-6503-2018
+# Laws (1991), doi:10.1016/0198-0149(91)90059-O
+# Mayor et al. (2006), doi:10.1093/plankt/fbl047
+# Morel et al. (2007), doi:10.1016/j.rse.2007.03.012
+# Moreno et al. (2022), doi:10.1029/2022AV000679
+# Møller (2007), doi:10.4319/lo.2007.52.1.0079
+# Nelson and Treguer (1992), doi:10.3354/meps080255
+# Ohman et al. (2004), doi:10.1016/j.icesjms.2004.03.016
+# Paasche (1973), doi:10.1007/BF02097147
+# Paulmier et al., (2009), doi:10.5194/bg-6-923-2009
+# Ridgwell et al. (2002), doi:10.1029/2002GB001877
+# Sanz-Martin et al. (2019), doi:10.3389/fmars.2019.00468
+# Sarmiento and Gruber (2006), doi:10.1017/S0016756807003755
+# Shiozaki et al. (2019), doi:10.1029/2018GB006068
+# Steinberg and Landry (2017), doi:10.1146/annurev-marine-010814-015924
+# Stephens et al. (2025), doi.org/10.1038/s42003-025-07574-2
+# Tanioka and Matsumoto (2020), doi:10.1029/2019GL085564
+# Wang et al. (2009), doi:10.1029/2009JC005286
+# White et al. (2018), doi:10.1038/s41598-018-28073-x
+# Van Cappellen et al. (2002), doi:10.1029/2001GB001431
+# Villa-Alfageme et al. (2016), doi:10.1002/2016GL069233
+# Yool et al. (2013) (Y13), doi:10.5194/gmd-6-1767-2013
+# Zapata-Hinestroza et al. (2025), doi:10.3390/rs17243990
+
+instances:
+
+  light:
+    model: gotm/light
+    parameters:
+      g2         : 4.0      # e-folding depth of visible fraction  (m)                     default=23.0, BOX: placeholder for turbid/CDOM-rich fjord water
+      g1         : 0.35
+      A          : 0.58
+
+  daylength:
+    model: niva/niva_ecosmo_daylength
+
+  ECO:
+    model: niva/niva_ecosmo
+    parameters:
+      Exphy      : 0.041    # phyto extinction                (m**2/mgCHL),                 default=0.03
+      rtsom_cnp  : 1.5547   # ratio of total suspended organic mass (dry) to total CNP mass (-), default = 1.5547 using Anderson (1995) stoichiometry: C106_H175_O42_N16_P.
+      rtsim_s    : 2.4596   # ratio of total suspended inorganic mass (dry) to silicon mass (-), default = 2.4596 assuming n=0.5 in opal formula (2(SiO2.nH20)=Si2O5H2, Rios et al., 1998).
+      rtsim_c_mesozoo: 0.1583 # ratio of total suspended inorganic mass (dry) to total carbon mass in mesozooplankton, default = 0.1583 using ash:carbon = 7.6/48 from Kiørboe (2013) Table 1.
+
+      rNH4Ps     : 0.20     # NH4 half saturation for Ps      (mmolN/m3),                   default=0.20
+      rNO3Ps     : 0.50     # NO3 half saturation for Ps      (mmolN/m3),                   default=0.50
+      rPO4Ps     : 0.05     # PO4 half saturation for Ps      (mmolP/m3),                   default=0.05
+      muPs       : 1.47     # max growth rate for Ps          (1/d),                        default=1.10, Modified PJW 30/05/2026, fitted to incubation data, see fit_model_nanoP_growth.m. mumax = muP * (alfaP/(alfaP+betaP)) * (betaP/(alfaP+betaP))^(betaP/alfaP) = 1.13 d-1.
+      q10Ps      : 2.0      # Q_10 temperature coefficient for Ps  (-),                     default=1.0, Modified PJW 13/04/2026, fixed value, see fit_model_nanoP_growth.m.
+      gammaDPs   : 0.25     # day length adaptation coefficient for Ps (-),                 default=1e12, Modified PJW 13/04/2026, fixed value, see fit_model_nanoP_growth.m.
+      alfaPs     : 4.20     # initial slope P-I curve for Ps  (mgC/(mgChl day W/m2)),       default=3.127, Modified PJW 30/05/2026, fitted to incubation data, see fit_model_nanoP_growth.m.
+      betaPs     : 0.3      # photoinhibition parameter for Ps (mgC/(mgChl day W/m2)),      default=0.0, Modified PJW 13/04/2026, fixed value, see fit_model_nanoP_growth.m.
+      MINchl2cPs : 0.0033   # minimum Chl to C ratio Ps       (mgChl/mgC),                  default=0.0063
+      MAXchl2cPs : 0.0322   # maximum Chl to C ratio Ps       (mgChl/mgC),                  default=0.0481, Modified PJW 30/05/2026, fitted to incubation data, see fit_model_nanoP_growth.m.
+      amortPs    : 10.0     # ratio max:min Ps mortality under nutrient limitation (-),     default=1.0
+      m1Ps       : 0.04     # linear Ps mortality rate        (1/d),                        default=0.08, Modified PJW 30/05/2026, fixed value, see notes.
+      m2Ps       : 0.0005   # quadratic Ps mortality rate     (m3/(mgC day))                default=0.0, Modified PJW 13/04/2026, fixed value, see notes.
+      frmort1Ps  : 0.6      # dissolved fraction of linear mortality (-),                   default=0.4
+      frmort2Ps  : 0.4      # dissolved fraction of quadratic mortality (-),                default=0.4
+
+      rNH4Pl     : 0.20     # NH4 half saturation for Pl      (mmolN/m3),                   default=0.20
+      rNO3Pl     : 0.50     # NO3 half saturation for Pl      (mmolN/m3),                   default=0.50
+      rPO4Pl     : 0.05     # PO4 half saturation for Pl      (mmolP/m3),                   default=0.05
+      rSiPl      : 1.0      # SiO2 half saturation for Pl     (mmolSi/m3),                  default=0.50, Modified PJW 21/05/2026, see notes.
+      minSiPl    : 0.0      # stop Si uptake below this concentration (mmolSi/m3),          default=0.0
+      muPl       : 1.98     # max growth rate for Pl          (1/d),                        default=1.30, Modified PJW 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m. mumax = muP * (alfaP/(alfaP+betaP)) * (betaP/(alfaP+betaP))^(betaP/alfaP) = 1.51 d-1.
+      q10Pl      : 2.0      # Q_10 temperature coefficient for Pl  (-),                     default=1.0, Modified PJW 13/04/2026, fixed value, see fit_model_diatom_growth.m.
+      gammaDPl   : 0.447    # day length adaptation coefficient for Pl (-),                 default=1e12, Modified PJW 13/04/2026, fitted value, see fit_model_diatom_growth.m.
+      alfaPl     : 3.93     # initial slope P-I curve for Pl  (mgC/(mgChl day W/m2)),       default=4.225, Modified PJW 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m.
+      betaPl     : 0.290    # photoinhibition parameter for Pl (mgC/(mgChl day W/m2)),      default=0.0, Modified PJW 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m.
+      MINchl2cPl : 0.0033   # minimum Chl to C ratio Pl       (mgChl/mgC),                  default=0.0063
+      MAXchl2cPl : 0.0680   # maximum Chl to C ratio Pl       (mgChl/mgC),                  default=0.0370, Modified PJW 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m.
+      amortPl    : 10.0     # ratio max:min Pl mortality under nutrient limitation (-),     default=1.0
+      m1Pl       : 0.04     # linear Pl mortality rate        (1/d),                        default=0.04
+      m2Pl       : 0.0005   # quadratic Pl mortality rate     (m3/(mgC day))                default=0.0, Modified PJW 13/04/2026, fixed value, see notes.
+      frmort1Pl  : 0.5      # dissolved fraction of linear mortality (-),                   default=0.4
+      frmort2Pl  : 0.3      # dissolved fraction of quadratic mortality (-),                default=0.4
+
+      GrZsPs     : 1.00     # Grazing rate Zs on Ps           (1/d),                        default=1.00
+      GrZsPl     : 1.00     # Grazing rate Zs on Pl           (1/d),                        default=1.00
+      GrZsZs     : 0.50     # Grazing rate Zs on Zs           (1/d),                        default=0.00
+      GrZsD      : 1.00     # Grazing rate Zs on Det          (1/d),                        default=1.00
+      prefZsPs   : 1.00     # Grazing preference Zs on Ps     (-),                          default=0.70, Modified PJW 13/04/2026, rescaled for maximum preference = 1.
+      prefZsPl   : 0.50     # Grazing preference Zs on Pl     (-),                          default=0.25, Modified PJW 31/05/2026, see notes.
+      prefZsZs   : 0.50     # Grazing preference Zs on Zs     (-),                          default=0.00, Modified PJW 31/05/2026, see notes.
+      prefZsD    : 0.25     # Grazing preference Zs on Det.   (-),                          default=0.00, Modified PJW 31/05/2026, see notes.
+      RgZs       : 35.0     # Zs grazing half saturation      (mgC/m3),                     default=40.0, Modified PJW 13/04/2026, rescaled for maximum preference = 1.
+      q10Zs      : 2.0      # Q_10 temperature coefficient for Zs (-),                      default=1.0, Modified PJW 13/04/2026, see notes above.
+      gammaZsP   : 0.75     # Zs assim. eff. on plankton      (-),                          default=0.75
+      gammaZsD   : 0.50     # Zs assim. eff. on det           (-),                          default=0.75, Modified PJW 13/04/2026, see notes above.
+      fregesZs   : 0.4      # dissolved fraction of Zs egestion (-),                        default=0.4
+      excZs      : 0.02     # Zs basal excretion/resp. rate   (1/d),                        default=0.08, Modified PJW 13/04/2026, see notes above.
+      fAexcZs    : 0.5      # Zs fraction of assimilated food that is excreted/respired (-),default=0.0
+      fexcdomZs  : 0.5      # Zs fraction of excreted/respired matter that is dom (-),      default=0.0, Modified PJW 13/04/2026, fixed value, see notes above.
+      mZs        : 0.05     # Zs mortality rate               (1/d),                        default=0.20, Modified PJW 13/04/2026, fixed value, see notes above.
+      q10mZs     : 2.0      # Q_10 temperature coefficient for Zs mortality (-),            default=1.0, Modified PJW 13/04/2026, fixed value, see notes above.
+      frmortZs   : 0.4      # dissolved fraction of Zs mortality (-),                       default=0.4
+
+      GrZlPs     : 0.60     # Grazing rate Zl on Ps           (1/d),                        default=0.80, Modified PJW 13/04/2026, fitted value, see fit_model_mesoZ_growth.m and notes above.
+      GrZlPl     : 0.60     # Grazing rate Zl on Pl           (1/d),                        default=0.80, Modified PJW 13/04/2026, see notes above.
+      GrZlZs     : 0.40     # Grazing rate Zl on Zs           (1/d),                        default=0.50, Modified PJW 13/04/2026, see notes above.
+      GrZlZl     : 0.20     # Grazing rate Zl on Zl           (1/d),                        default=0.00, Modified PJW 13/04/2026, see notes above.
+      GrZlD      : 0.60     # Grazing rate Zl on Det          (1/d),                        default=0.80, Modified PJW 13/04/2026, see notes above.
+      prefZlPs   : 0.50     # Grazing preference Zl on Ps     (-),                          default=0.10, Modified PJW 13/04/2026, see notes above.
+      prefZlPl   : 1.00     # Grazing preference Zl on Pl     (-),                          default=0.85, Modified PJW 13/04/2026, see notes above.
+      prefZlZs   : 1.00     # Grazing preference Zl on Zs     (-),                          default=0.15, Modified PJW 13/04/2026, see notes above.
+      prefZlZl   : 0.25     # Grazing preference Zl on Zl     (-),                          default=0.00, Modified PJW 13/04/2026, see notes above.
+      prefZlD    : 0.50     # Grazing preference Zl on Det.   (-),                          default=0.00, Modified PJW 13/04/2026, see notes above.
+      RgZl       : 33.0     # Zl grazing half saturation      (mgC/m3),                     default=40.0, Modified PJW 13/04/2026, rescaled for maximum preference = 1.
+      q10Zl      : 2.8      # Q_10 temperature coefficient for Zl (-),                      default=1.0, Modified PJW 13/04/2026, fixed value, see fit_model_mesoZ_growth.m.
+      fGslpZlPs  : 0.10     # Zl fraction of Ps-grazing that is slopped (not ingested) (-), default=0.0
+      fGslpZlPl  : 0.30     # Zl fraction of Pl-grazing that is slopped (not ingested) (-), default=0.0
+      fGslpZlZs  : 0.30     # Zl fraction of Zs-grazing that is slopped (not ingested) (-), default=0.0
+      fGslpZlZl  : 0.40     # Zl fraction of Zl-grazing that is slopped (not ingested) (-), default=0.0
+      fGslpZlD   : 0.20     # Zl fraction of Det-grazing that is slopped (not ingested) (-),default=0.0
+      gammaZlP   : 0.70     # Zl assim. eff. on plankton      (-),                          default=0.75, Modified PJW 13/04/2026, fixed value, see fit_model_mesoZ_growth.m and notes above.
+      gammaZlD   : 0.50     # Zl assim. eff. on det           (-),                          default=0.75, Modified PJW 13/04/2026, see notes above.
+      fregesZl   : 0.2      # dissolved fraction of Zl egestion (-),                        default=0.4
+      excZl      : 0.02     # Zl basal excretion/resp. rate   (1/d),                        default=0.08, Modified PJW 13/04/2026, fixed value, see fit_model_mesoZ_growth.m and notes above.
+      fAexcZl    : 0.37     # Zl fraction of assimilated food that is excreted/respired (-),default=0.37, Modified PJW 13/04/2026, fitted value, see fit_model_mesoZ_growth.m and notes above.
+      fexcdomZl  : 0.5      # Zl fraction of excreted/respired matter that is dom (-),      default=0.0, Modified PJW 13/04/2026, fixed value, see fit_model_mesoZ_growth.m and notes above.
+      mZl        : 0.02     # Zl basal mortality rate         (1/d),                        default=0.20, Modified PJW 13/04/2026, fixed value, see fit_model_mesoZ_growth.m and notes above.
+      mvZl       : 0.04     # Z1 visual predation mortality   (1/d),                        default=0.0, Modified PJW 13/04/2026, see notes above.
+      KE0mvZl    : 2.2      # Half-saturation PAR for Zl visual predation mortality (W/m2)  default=2.2, Modified PJW 13/04/2026, see notes above.
+      q10mZl     : 2.0      # Q_10 temperature coefficient for Zl mortality (-),            default=1.0, Modified PJW 13/04/2026, see notes above.
+      frmortZl   : 0.2      # dissolved fraction of Zl mortality (-),                       default=0.4, Modified PJW 13/04/2026, see notes above.
+
+      eta_PQ     : 1.1      # photosynthetic quotient: moles O2 produced per mole C fixed (-), default=1.0, Modified PJW 13/04/2026, see notes above.
+      eta_O2resp : 1.2      # respiration quotient: moles O2 consumed per mole C respired (-), default=1.0, Modified PJW 30/05/2026, see notes above.
+      eta_denit  : 5.3      # denitrification moles NO3 used per mole N in organic matter (-), default=5.3
+      eta_SO4resp: 1.0      # SO4 respiration quotient: moles negative O2 produced per mole C respired (-), default=1.0
+      eta_nitrif : 2.0      # nitrification quotient: moles O2 consumed per mole NH4 nitrified (-), default=2.0
+
+      nitrifmax  : 0.1      # max nitrification rate          (1/d),                        default=0.1
+      aTnitrif   : 0.11     # temp. control nitrification     (1/degC),                     default=0.11
+      KO2nitrif  : 0.45     # O2 half saturation for nitrification (mmolO2/m3),             default=0.45
+      aE0nitrif  : 0.088    # PAR control nitrification       ((W/m2)^-bE0nitrif),          default=0.0, Modified PJW 10/07/20226
+      bE0nitrif  : 1.22     # PAR exponent nitrification      (-),                          default=1.0, Modified PJW 10/07/20226
+      reminD     : 0.006    # detritus remineralization rate  (1/d),                        default=0.003, Modified PJW 21/05/2026
+      dissO      : 0.019    # opal dissolution rate (0 degC, sil=0) (1/d),                  default=0.015
+
+      Rain0      : 1.0      # maximum Rain Ratio (PIC:POC) within calcifiers (-),           default=1.0
+      Kcalom     : 1.0      # half-saturation constant for calcifier Rain Ratio dependence on calcite saturation state (-), default=1.0
+      fdissCZs   : 0.5      # fraction of small zooplankton prey calcite that dissolves after ingestion (-), default=0.50
+      fdissCZl   : 0.25     # fraction of large zooplankton prey calcite that dissolves after ingestion (-), default=0.25
+      dissCmax   : 0.03     # maximum specific dissolution rate (1/d),                      default=0.03
+      ndissC     : 2.22     # sed. power of calcite dissolution law (Keir 1980) (-),        default=2.22
+
+      sinkD      : 5.0      # minimum detritus sinking rate   (m/d),                        default=5.00
+      sinkOPAL   : 5.0      # minimum opal sinking rate       (m/d),                        default=5.00
+      sinkCAL    : 5.0      # minimum calcite sinking rate    (m/d),                        default=5.00
+      cz_sinkD   : 0.039    # detritus sinking rate increase per metre below surface (1/d), default=0.0, Modified PJW 21/05/2026
+      cz_sinkOPAL: 0.039    # opal sinking rate increase per metre below surface (1/d),     default=0.0, Modified PJW 21/05/2026
+      cz_sinkCAL : 0.039    # calcite sinking rate increase per metre below surface (1/d),  default=0.0, Modified PJW 21/05/2026
+
+      crBotStr   : 0.007    # critic. bot. stress for resusp. (N/m2),                       default=0.007
+      resuspRt   : 25.00    # resuspension rate               (1/d),                        default=25.00
+      burialRt   : 0.0      # linear detritus burial rate     (1/d),                        default=0.00001
+      burialRt2  : 1e-7     # quadratic detritus burial parameter (m2/(mg C day),           default=0.0
+      reminSED   : 0.002    # sediment remineralization rate  (1/d),                        default=0.002
+      aTreminSED : 0.15     # temp. control remineralization  (1/degC),                     default=0.15
+      gammaND    : 0.5      # fraction of oxic remineralization lost to coupled nitrification-denitrification (-), default=0.5
+      KO2nitrifSED: 4.5     # O2 half saturation for nitrification in sediments (mmolO2/m3),default=4.5
+      dissSEDO   : 0.0005   # sed. opal dissolution rate      (1/d),                        default=0.0002, Modified PJW 21/05/2026
+      burialRtO  : 0.0      # linear opal burial rate         (1/d),                        default=0.00001
+      burialRt2O : 1e-7     # quadratic opal burial parameter (m2/(mg C day),               default=0.0
+      dissSEDCmax : 30.0    # sed. max. dissolution rate calcite (1/d),                     default=30.0
+      dissSEDCmin : 0.05    # sed. min. dissolution rate calcite (1/d),                     default=0.05
+      ndissSEDC  : 2.22     # sed. power of calcite dissolution law (Keir 1980) (-),        default=2.22
+      burialRtC  : 0.0      # linear calcite burial rate      (1/d),                        default=0.00001
+      burialRt2C : 1e-7     # quadratic calcite burial parameter (m2/(mg C day),            default=0.0
+      releaseP   : 0.002    # P sed. release rate             (1/d),                        default=0.002
+      aTreleaseP : 0.15     # temp. control P sed. release    (1/degC),                     default=0.15
+      RelSEDp1   : 0.15     # P sed. release O2-dependence max. fractional reduction (-),   default=0.15
+      RelSEDp2   : 0.10     # P sed. release O2-dependence half-saturation coefficient (-), default=0.10
+
+      couple_co2: true
+      use_aice: false   # BOX: no ice
+
+    initialization:   # BOX: Drammensfjorden winter placeholders (1 umolN/L = 79.57 mgC/m3, 1 umolP/L = 1273.1 mgC/m3, 1 umolSi/L = 79.57 mgC/m3)
+      no3        : 955.0    # nitrate (mgC/m**3)          = 12 umolN/L
+      nh4        : 80.0     # ammonium (mgC/m**3)         = 1 umolN/L
+      oxy        : 320.0    # oxygen (mmolO2/m**3)
+      pho        : 764.0    # phosphate (mgC/m**3)        = 0.6 umolP/L
+      det        : 0.1      # detritus (mgC/m**3)
+      dom        : 3.0      # labile dissolved om (mgC/m**3)
+      sil        : 1989.0   # silicate (mgC/m**3)         = 25 umolSi/L
+      opa        : 0.1      # opal (mgC/m**3)
+      cal        : 0.05     # calcite (mgC/m**3) from ERSEM
+      fla        : 0.1      # small phytoplankton (mgC n/m**3)
+      dia        : 0.1      # large phytoplankton (mgC/m**3)
+      microzoo   : 0.01     # microzooplankton (mgC/m**3)
+      mesozoo    : 0.01     # mesozooplankton (mgC/m**3)
+      flachl     : 0.005    # small phytoplankton chl-a (mgChl/m**3)
+      diachl     : 0.005    # large phytoplankton chl-a (mgChl/m**3)
+      sed1       : 113.6    # mgC/m2 (20mgN in C units)
+      sed2       : 56.65    # mgC/m2 (20mgSi in C units)
+      sed3       : 82.2     # mgC/m2 (2mgP in C units)
+      sed4       : 0.05     # mgC/m2 from ERSEM
+
+    coupling:
+      E0_s       : light/par  #This uses 'downwelling par' from gotm/light as scalar par
+      dic_target : CO2/dic
+      alk_target : CO2/alk
+      om_cal     : CO2/Om_cal                             # calcite saturation (-)
+
+  CO2:
+    long_name: carbonate
+    model: niva/niva_ecosmo_carbonate
+    parameters:
+      pHscale: 1                                          # pH scale (1: total, 0: SWS, -1: SWS backward compatible), default = 1
+      use_aice: false                                     # use ice area to limit air-sea flux, default=false, BOX: no ice
+    initialization:
+      dic: 1450.0                                         # total dissolved inorganic carbon (mmol C/m^3), BOX: brackish placeholder
+      alk: 1500.0                                         # total alkalinity (mmol/m^3), BOX: brackish placeholder
+
+  n3_deposition:
+    model: external_surface_flux
+    coupling:
+      target: ECO/no3
+
+  n4_deposition:
+    model: external_surface_flux
+    coupling:
+      target: ECO/nh4

@@ -1,0 +1,14 @@
+[deps]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
+NivaEcosmo = "0fe4996b-995b-40d0-a594-b88dbf63442d"
+YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
+
+[sources]
+NivaEcosmo = {path = ".."}
+
+[compat]
+CairoMakie = "0.15"
+NCDatasets = "0.14"
+YAML = "0.4"
