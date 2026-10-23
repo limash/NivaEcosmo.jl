@@ -25,6 +25,8 @@ using YAML
 import CairoMakie as M
 
 const HERE = @__DIR__
+# The inputs, shared with the tests and `fjordsim_model/`
+const DATA = joinpath(HERE, "..", "data")
 
 # Box geometry and constant forcing, as in run_box.py
 const LATITUDE = 59.7          # degrees N
@@ -225,8 +227,8 @@ total_phosphorus(state) = DEPTH * sum(name -> state[name], P_INTERIOR) + sum(nam
 Integrate the box over the forcing period. Returns the daily output: the state at the start of each
 day, the daily-mean diagnostics and exchange flows, and the forcing.
 """
-function run_box(; yaml = joinpath(HERE, "fabm.yaml"), forcing = joinpath(HERE, "forcing.csv"),
-                   boundary = joinpath(HERE, "boundary.yaml"), closed = false)
+function run_box(; yaml = joinpath(DATA, "fabm.yaml"), forcing = joinpath(DATA, "forcing.csv"),
+                   boundary = joinpath(DATA, "boundary.yaml"), closed = false)
 
     configuration = fabm_configuration(yaml)
     if closed
@@ -365,9 +367,9 @@ function main(args)
     closed = "--closed" in args
     value(flag, default) = (i = findfirst(==(flag), args); isnothing(i) ? default : args[i+1])
 
-    output = run_box(; yaml = value("--yaml", joinpath(HERE, "fabm.yaml")),
-                       forcing = value("--forcing", joinpath(HERE, "forcing.csv")),
-                       boundary = value("--boundary", joinpath(HERE, "boundary.yaml")),
+    output = run_box(; yaml = value("--yaml", joinpath(DATA, "fabm.yaml")),
+                       forcing = value("--forcing", joinpath(DATA, "forcing.csv")),
+                       boundary = value("--boundary", joinpath(DATA, "boundary.yaml")),
                        closed)
 
     out = value("--out", joinpath(HERE, closed ? "output_closed.nc" : "output.nc"))

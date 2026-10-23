@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | [`README.md`](README.md) | using `ECOSMO` in a model or from FjordSim; anything touching where the port differs from the Fortran |
 | [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) | changing light attenuation, settling/sinking, or the sediment coupling |
 | [`box_model/README.md`](box_model/README.md) | running the box model or comparing against pyfabm |
+| [`fjordsim_model/README.md`](fjordsim_model/README.md) | installing or running the FjordSim setups (`moro.jl`) |
 
 ## Commands
 
@@ -18,7 +19,12 @@ julia --project=box_model -e 'using Pkg; Pkg.instantiate()'             # box mo
 julia --project=box_model box_model/run_box.jl                          # one year -> box_model/output.nc, output.png
 julia --project=box_model box_model/run_box.jl --closed --no-plot       # no exchange, no burial: total P conserved
 julia --project=box_model box_model/compare.jl <pyfabm output.nc>       # compare with niva-ecosmo's box_model output
+julia --project=fjordsim_model -e 'using Pkg; Pkg.instantiate()'        # FjordSim setups env, once
+julia --project=fjordsim_model -m FjordSim <step> --config fjordsim_model/moro.jl
 ```
+
+Input files — `fabm.yaml`, the box model's `forcing.csv` and `boundary.yaml`, and the FjordSim
+setups' tracer values (`moro_ecosmo.yaml`) — are in `data/`.
 
 The tests are one file of nested `@testset`s with no filter; to run one, evaluate the file's
 `using` block and that `@testset` in a REPL started with `julia --project`. `.JuliaFormatter.toml`
@@ -118,7 +124,7 @@ carbonate functions, tendency and sediment methods):
 ## Tests
 
 - Tests are offline and build their own fixtures; parameters and initial values come from
-  `box_model/fabm.yaml`, a file copied unchanged from niva-ecosmo.
+  `data/fabm.yaml`, a file copied unchanged from niva-ecosmo.
 - Test a property the port must have — conservation, equality of the OceanBioME tendencies with
   the pointwise composition, Fortran agreement — not an incidental number.
 - Do not test plotting.

@@ -22,7 +22,9 @@ FABM's `gotm/light`, the light model the configurations run with.
 | `src/sediment.jl` | `ecosmo_sediment`: `sed1`–`sed4` as an OceanBioME `BiogeochemicalSediment` |
 | `src/boundary_conditions.jl` | `ecosmo_surface_fluxes`: O₂ and CO₂ air-sea exchange as flux boundary conditions |
 | `src/fabm_yaml.jl` | `fabm_configuration`: parameters, light and initial values from a niva-ecosmo `fabm.yaml` |
+| `data/` | input files: `fabm.yaml` (the A20 v3aa configuration the tests and the box model read), the box model's forcing and boundary values, and the FjordSim setups' tracer values |
 | `box_model/` | the Drammensfjorden box model and its comparison with the Fortran (see its README) |
+| `fjordsim_model/` | FjordSim setups running ECOSMO, with their own environment (see its README) |
 | `test/runtests.jl` | tests |
 
 The processes are pointwise functions of one cell, shared by the OceanBioME kernels and the box
@@ -51,7 +53,7 @@ julia --project test/runtests.jl
 ```julia
 using Oceananigans, NivaEcosmo
 
-configuration = fabm_configuration("box_model/fabm.yaml")   # or EcosmoParameters(; muPs = 1.47, ...)
+configuration = fabm_configuration("data/fabm.yaml", eltype(grid))  # or EcosmoParameters(eltype(grid); ...)
 parameters = configuration.parameters
 
 biogeochemistry = ECOSMO(grid;
@@ -75,6 +77,9 @@ for name in (:sed1, :sed2, :sed3, :sed4)
 end
 ```
 
+The parameters' float type must be the grid's: `ECOSMO` takes its type from the grid, so a
+`Float32` grid needs `fabm_configuration(path, Float32)` or `EcosmoParameters(Float32; ...)`.
+
 The tracers keep their FABM names and units (`ECOSMO_TRACERS`): `no3 nh4 pho sil oxy fla dia
 flachl diachl microzoo mesozoo det opa cal dom dic alk`, nutrients, plankton and organic matter in
 mgC m⁻³ (Redfield), chlorophyll in mg m⁻³, `oxy`, `dic` and `alk` in mmol m⁻³. The model reads `T`
@@ -83,43 +88,25 @@ mgC m⁻³ (Redfield), chlorophyll in mg m⁻³, `oxy`, `dic` and `alk` in mmol 
 
 ### From FjordSim
 
-The same three steps as `examples/oslofjorden_npzd.jl`, with `ECOSMO` in place of `NPZD`:
+`fjordsim_model/moro.jl` is a complete FjordSim setup running ECOSMO; `fjordsim_model/README.md`
+says how to install and run it. It follows FjordSim's `examples/oslofjorden_npzd.jl`, through the
+hooks FjordSim offers an out-of-tree setup:
 
-```julia
-using NivaEcosmo
-using Dates: dayofyear
-
-struct EcosmoModel{M,T,S,W} <: AbstractCoupledSimulationConfig
-    base::M
-    tracers::T                  # (:T, :S, ECOSMO_TRACERS...): the list must be complete
-    surface_shortwave::S
-    wind_speed::W
-end
-
-Simulations.model_tracers(model::EcosmoModel) = model.tracers
-
-Simulations.coupled_simulation(model::EcosmoModel, grid; kwargs...) = Simulations.coupled_simulation(
-    CoupledHydrostaticSimulation(
-        # ... every other field from model.base, as npzd_model does ...
-        tracers = model.tracers,
-        biogeochemistry = ECOSMO(grid;
-                                 surface_shortwave = model.surface_shortwave,
-                                 start_day_of_year = dayofyear(start_date) - 1,
-                                 sediment = ecosmo_sediment(grid; bottom_stress = QuadraticBottomStress(drag_coefficient = 0.003))),
-    ),
-    grid; kwargs...)
-
-# the gas exchange, as one more piece of MergedBoundaryConditions
-struct EcosmoSurfaceFluxes{W} <: AbstractBoundaryConditionConfig
-    wind_speed::W
-end
-
-BoundaryConditions.boundary_condition_sides(config::EcosmoSurfaceFluxes, grid, forcing, boundary_config, tracers) =
-    map(bc -> (top = bc,), ecosmo_surface_fluxes(; wind_speed = config.wind_speed))
-```
-
-As with NPZD, FjordSim's open boundaries need a prepared series for every one of the 17 tracers,
-and the rivers may carry any of them.
+- **The model.** An `AbstractBiogeochemistryConfig` whose `Simulations.model_biogeochemistry(config,
+  grid)` method builds `ECOSMO`, because `ECOSMO` needs the grid and a setup file is evaluated
+  before there is one. The sediment's pools are set there too, since they are not model fields.
+  `tracers` must name all of them, `(:T, :S, ECOSMO_TRACERS...)`, and so must a `NamedTuple`
+  `tracer_advection`: a tracer it omits is advected by `Centered()`.
+- **Gas exchange.** An `AbstractBoundaryConditionConfig` whose `boundary_condition_sides` returns
+  `ecosmo_surface_fluxes` as top conditions, one more piece of `MergedBoundaryConditions`.
+  FjordSim's `AirSeaFluxes` gives a top condition to T and S only.
+- **Open boundaries.** `OpenLateralBoundaryFromData` radiates every model tracer towards its
+  prepared series and raises for a tracer with none, so an `AbstractBoundaryDataConfig` wrapping the
+  NorKyst one appends all 17 to the prepared boundary file.
+- **Rivers.** A tracer the river file does not carry enters at zero. An `AbstractRiverConfig`
+  wrapping `NVERiversConfig` adds a series per tracer to its `river_series`.
+- **Initial state.** `FromInitialState` reads T, S, u and v only, so a wrapper of it adds the
+  ECOSMO tracers through `Simulations.resolve_initial_conditions`.
 
 ## Where the port differs from the Fortran
 

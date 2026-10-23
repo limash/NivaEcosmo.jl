@@ -33,12 +33,13 @@ const ECOSMO_DEFAULT_INITIAL_VALUES = (
 )
 
 """
-    fabm_configuration(path)
+    fabm_configuration(path, FT = Float64)
 
 The ECOSMO configuration in the `fabm.yaml` at `path`, as
 `(; parameters, pH_scale, light, initial_values)`:
 
-- `parameters`: the `niva/niva_ecosmo` instance's [`EcosmoParameters`](@ref);
+- `parameters`: the `niva/niva_ecosmo` instance's [`EcosmoParameters`](@ref), in `FT`, which must
+  be the float type of the grid they are used on;
 - `pH_scale`: the `niva/niva_ecosmo_carbonate` instance's `pHscale`;
 - `light`: the `gotm/light` parameters as `GOTMLight` keywords `(; A, g1, g2)`;
 - `initial_values`: every state variable's initialization, the Fortran default where the file
@@ -47,7 +48,7 @@ The ECOSMO configuration in the `fabm.yaml` at `path`, as
 Only what this port implements is accepted: `couple_co2` must be true and `use_aice` false, and
 an unknown parameter is an error.
 """
-function fabm_configuration(path)
+function fabm_configuration(path, FT::DataType = Float64)
     instances = YAML.load_file(path)["instances"]
 
     ecosmo = only_instance(instances, ECOSMO_MODEL, path)
@@ -69,7 +70,7 @@ function fabm_configuration(path)
         haskey(names, key) || throw(ArgumentError("$path: unknown niva_ecosmo parameter `$key`"))
         push!(kwargs, names[key] => yaml_float(value))
     end
-    parameters = EcosmoParameters(; kwargs...)
+    parameters = EcosmoParameters(FT; kwargs...)
 
     carbonate_parameters = lowercase_keys(get(carbonate, "parameters", Dict()))
     pH_scale = Int(get(carbonate_parameters, "phscale", 1))

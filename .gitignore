@@ -1,6 +1,7 @@
 # Manifests: this is a package, so each environment resolves its own
 /Manifest*.toml
 /box_model/Manifest*.toml
+/fjordsim_model/Manifest*.toml
 
 # Box model output
 /box_model/output*.nc

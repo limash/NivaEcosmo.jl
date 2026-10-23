@@ -14,7 +14,7 @@ forcing.
 
 | File | Content |
 |---|---|
-| `fabm.yaml`, `forcing.csv`, `boundary.yaml` | copied unchanged from niva-ecosmo's `box_model/` |
+| `../data/fabm.yaml`, `../data/forcing.csv`, `../data/boundary.yaml` | the inputs, copied unchanged from niva-ecosmo's `box_model/` |
 | `run_box.jl` | the box model; writes `output.nc` and `output.png` |
 | `compare.jl` | compares `output.nc` with the pyfabm `output.nc`, writes `compare.png` |
 | `Project.toml` | the environment; uses the package from `..` |

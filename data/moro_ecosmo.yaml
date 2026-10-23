@@ -1,0 +1,70 @@
+# data/moro_ecosmo.yaml
+#
+# ECOSMO tracer values for the open boundaries, the initial state and the rivers of
+# `fjordsim_model/moro.jl`, the FjordSim setup of the Møre og Romsdal coast.
+#
+# PLACEHOLDERS, NOT MEASUREMENTS. Typical magnitudes for Atlantic-influenced Norwegian coastal water
+# and soft-water west-coast rivers, chosen to bring the setup up. Replace them with observations or
+# a reanalysis before a run is used for science.
+#
+# Units are named per tracer and converted in `moro.jl` to ECOSMO's: N, P and Si in µmol/L become
+# mgC/m3 through ECOSMO's Redfield ratios; mmol/m3, mgC/m3 and mg/m3 are ECOSMO's own.
+
+# The productive season, shared by every boundary tracer: a window that opens with the spring bloom
+# and closes with autumn mixing, each transition a logistic in day of year (the shape of
+# FjordSim's `examples/oslofjorden_npzd.jl`). 0 in midwinter, 1 through the summer.
+season:
+  onset_day: 105        # mid-April: the spring bloom at 62-63°N, later than the Oslofjord's
+  onset_width: 12       # days
+  end_day: 275          # early October
+  end_width: 12         # days
+
+boundary:
+  surface_layer_depth: 50.0   # m: the winter column is uniform above this
+  deep_water_depth: 300.0     # m: Atlantic water below this, linear transition between
+  depletion_scale: 30.0       # m: e-folding depth of the summer change in a dissolved tracer
+  euphotic_scale: 25.0        # m: e-folding depth of plankton and organic matter
+
+  # Surface value in winter and in summer, and the value below `deep_water_depth`. The summer
+  # change is added at the surface and decays with depth over `depletion_scale`.
+  dissolved:
+    no3: {unit: umol N/L, winter: 9.0, summer: 0.5, deep: 12.5}
+    nh4: {unit: umol N/L, winter: 0.3, summer: 0.3, deep: 0.1}
+    pho: {unit: umol P/L, winter: 0.65, summer: 0.1, deep: 0.85}
+    sil: {unit: umol Si/L, winter: 5.0, summer: 0.5, deep: 8.0}
+    oxy: {unit: mmol/m3, winter: 300.0, summer: 280.0, deep: 285.0}   # warmer water holds less
+    dic: {unit: mmol/m3, winter: 2170.0, summer: 2115.0, deep: 2190.0} # C:N 6.625 times the nitrate drawdown
+    alk: {unit: mmol/m3, winter: 2340.0, summer: 2340.0, deep: 2340.0}
+
+  # Surface value in winter and in summer, decaying with depth over `euphotic_scale` to `deep`.
+  biological:
+    fla: {unit: mgC/m3, winter: 2.0, summer: 25.0, deep: 0.0}
+    dia: {unit: mgC/m3, winter: 2.0, summer: 25.0, deep: 0.0}
+    microzoo: {unit: mgC/m3, winter: 1.0, summer: 8.0, deep: 0.0}
+    mesozoo: {unit: mgC/m3, winter: 1.0, summer: 8.0, deep: 0.0}
+    det: {unit: mgC/m3, winter: 5.0, summer: 20.0, deep: 5.0}
+    dom: {unit: mgC/m3, winter: 5.0, summer: 15.0, deep: 5.0}
+    opa: {unit: mgC/m3, winter: 0.1, summer: 2.0, deep: 0.1}
+    cal: {unit: mgC/m3, winter: 0.05, summer: 0.05, deep: 0.05}
+
+  # Chlorophyll from its group's carbon, at the carbon-to-chlorophyll ratios ECOSMO's own default
+  # initial values use.
+  chlorophyll:
+    flachl: {from: fla, carbon_to_chlorophyll: 20.0}
+    diachl: {from: dia, carbon_to_chlorophyll: 27.0}
+
+# One concentration for every river: mean + amplitude * cos(2π (day - peak_day) / 365), with day
+# the day of the year. Nutrients and carbonate peak in late winter, when uptake is lowest and the
+# rivers are fed by groundwater, and are diluted by the snowmelt flood in early summer. Oxygen
+# follows the saturation of cold water. Detritus peaks with the flood, DOM with the autumn rains.
+# Tracers not named here (the plankton) enter at zero; salinity is 0.
+river:
+  no3: {unit: umol N/L, mean: 6.0, amplitude: 3.0, peak_day: 45}
+  nh4: {unit: umol N/L, mean: 0.5, amplitude: 0.0, peak_day: 45}
+  pho: {unit: umol P/L, mean: 0.05, amplitude: 0.02, peak_day: 45}
+  sil: {unit: umol Si/L, mean: 40.0, amplitude: 10.0, peak_day: 45}
+  oxy: {unit: mmol/m3, mean: 380.0, amplitude: 40.0, peak_day: 45}
+  dic: {unit: mmol/m3, mean: 120.0, amplitude: 20.0, peak_day: 45}
+  alk: {unit: mmol/m3, mean: 100.0, amplitude: 20.0, peak_day: 45}
+  det: {unit: mgC/m3, mean: 20.0, amplitude: 10.0, peak_day: 160}
+  dom: {unit: mgC/m3, mean: 10.0, amplitude: 5.0, peak_day: 290}

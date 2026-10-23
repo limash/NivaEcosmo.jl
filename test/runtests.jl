@@ -9,7 +9,7 @@ using Oceananigans.Operators: Vᶜᶜᶜ, Azᶜᶜᶜ
 using Oceananigans.ImmersedBoundaries: immersed_cell
 using Test
 
-const BOX_YAML = joinpath(@__DIR__, "..", "box_model", "fabm.yaml")
+const BOX_YAML = joinpath(@__DIR__, "..", "data", "fabm.yaml")
 
 # The box model's density, so a model cell and the pointwise functions see the same one.
 box_density(T, S, P) = 1000.0 + 0.78 * S - 0.0065 * (T - 4.0)^2
@@ -35,6 +35,11 @@ const P_TRACERS = (:pho, :fla, :dia, :microzoo, :mesozoo, :det, :dom)
         @test configuration.light == (A = 0.58, g1 = 0.35, g2 = 4.0)
         @test configuration.initial_values.no3 == 955.0
         @test configuration.initial_values.dic == 1450.0
+
+        # ECOSMO takes its float type from the grid, so a Float32 grid needs Float32 parameters.
+        grid = RectilinearGrid(Float32; size = (1, 1, 2), extent = (1, 1, 10), topology = (Periodic, Periodic, Bounded))
+        parameters = fabm_configuration(BOX_YAML, Float32).parameters
+        @test ECOSMO(grid; parameters, latitude = 60).underlying_biogeochemistry.parameters === parameters
     end
 
     @testset "interior phosphorus is conserved" begin
