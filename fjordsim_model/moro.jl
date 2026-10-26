@@ -557,9 +557,25 @@ FjordConfig(
             # `max_time_step`. On 500 m cells most rivers need one column; the log of `add_rivers`
             # states how many each got.
             maximum_inflow_velocity = 1.0e-3,
-            # None yet. Attach HydAPI gauges to the large rivers (Driva, Rauma, Surna, Eira, Aura)
-            # by the `vassdragsnr` `add_rivers` logs for each mouth, as `examples/lista.jl` does.
-            outlets = NVERiver[],
+            # Water temperature only: every river with a HydAPI daily temperature station on its own
+            # watercourse, near the mouth, recorded on all 365 days of 2023. The other mouths carry
+            # these rivers' daily mean (`nve_fill_temperatures!`); with none, `add_rivers` fails.
+            # Surna's is the one above Trollheim kraftstasjon: the plant's outlet station (112.33.0)
+            # lacks 18 days of 2023. Discharge is still every river's REGINE normal; attach
+            # `discharge_station`s to the large rivers (Driva, Rauma, Surna, Eira, Aura) as
+            # `examples/lista.jl` does.
+            outlets = [
+                NVERiver(vassdragsnr = "109.A0", name = "Driva", temperature_station = "109.44.0"),
+                NVERiver(vassdragsnr = "112.A0", name = "Surna", temperature_station = "112.35.0"),
+                NVERiver(vassdragsnr = "103.A20", name = "Rauma", temperature_station = "103.42.0"),
+                NVERiver(vassdragsnr = "104.A", name = "Eira", temperature_station = "104.27.0"),
+                NVERiver(vassdragsnr = "104.2A0", name = "Visa", temperature_station = "104.23.0"),
+                NVERiver(vassdragsnr = "105.A", name = "Osenvassdraget", temperature_station = "105.1.0"),
+                NVERiver(vassdragsnr = "096.1A", name = "Hareidselva", temperature_station = "96.3.0"),
+                NVERiver(vassdragsnr = "094.4A", name = "Austefjordvassdraget", temperature_station = "94.13.0"),
+                NVERiver(vassdragsnr = "102.11Z", name = "Hildreelva", temperature_station = "102.1.0"),
+                NVERiver(vassdragsnr = "107.61Z", name = "Sagelva", temperature_station = "107.8.0"),
+            ],
         ),
         river_concentrations(),
     ),
