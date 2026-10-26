@@ -49,14 +49,27 @@ julia --project=fjordsim_model -m FjordSim <step> --config fjordsim_model/moro.j
 ```
 
 in this order: `prepare_bathymetry`, `download_initial_state`, `prepare_initial_state`,
-`add_rivers`, `download_boundaries`, `prepare_boundaries`, `download_atmosphere`,
+`add_rivers`, `download_boundary_data`, `prepare_boundary_data`, `download_atmosphere`,
 `prepare_atmosphere`, `run_simulation`, `validate_simulation`.
 
-A changed `data/moro_ecosmo.yaml` needs `add_rivers` and `prepare_boundaries` re-run. FjordSim's
+A changed `data/moro_ecosmo.yaml` needs `add_rivers` and `prepare_boundary_data` re-run. FjordSim's
 `docs/running.md` lists what else to re-run after a change.
 
-FjordSim's `gcp/fjordsim-gcp` runs a setup in FjordSim's own environment, which has no NivaEcosmo,
-so these setups run locally for now.
+## Run on FjordSim's GCP VM
+
+FjordSim's plain image has no NivaEcosmo, so the setup runs in an image built with this environment
+in it ("A setup with its own environment" in FjordSim's `gcp/README.md`). From the FjordSim
+checkout, with `IMAGE_URI` naming a tag of its own:
+
+```bash
+export IMAGE_URI=REGION-docker.pkg.dev/PROJECT/REPO/fjordsim-ecosmo:latest
+gcp/fjordsim-gcp build --environment path/to/NivaEcosmo.jl/fjordsim_model
+gcp/fjordsim-gcp run --config path/to/NivaEcosmo.jl/fjordsim_model/moro.jl \
+    --steps prepare_bathymetry,download_initial_state,prepare_initial_state,add_rivers,download_boundary_data,prepare_boundary_data
+```
+
+The image holds NivaEcosmo and `data/` as they were when it was built, so a change to either needs
+a rebuild. `moro.jl` is uploaded with each run.
 
 ## What to check while preparing the data
 
@@ -101,7 +114,7 @@ at its catchment's mean flow all year, so attach their HydAPI gauges as `NVERive
 `outlets`, keyed by that `vassdragsnr` (FjordSim's `examples/lista.jl` shows how), and re-run
 `add_rivers`.
 
-**After `prepare_boundaries`** (`boundaries.png`): the open edges carry data wherever there is
+**After `prepare_boundary_data`** (`boundaries.png`): the open edges carry data wherever there is
 water, and the log shows the ECOSMO tracers being appended (`Writing west_no3 ...`).
 
 **After `prepare_atmosphere`** (`atmosphere.png`): the fields cover the whole box and the whole

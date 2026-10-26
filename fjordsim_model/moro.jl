@@ -48,7 +48,12 @@ using FjordSim
 using FjordSim: BoundaryConditions, BoundaryData, Rivers, Simulations
 using FjordSim.Bathymetry: GEONORGE_DYBDEDATA_GDB
 using FjordSim.Configs:
-    AbstractBiogeochemistryConfig, AbstractBoundaryConditionConfig, AbstractBoundaryDataConfig, AbstractRiverConfig
+    AbstractBiogeochemistryConfig,
+    AbstractBoundaryConditionConfig,
+    AbstractBoundaryDataConfig,
+    AbstractRiverConfig,
+    run_config,
+    start_date
 using Oceananigans:
     CATKEVerticalDiffusivity,
     HydrostaticSphericalCoriolis,
@@ -307,7 +312,7 @@ end
 EcosmoGasExchange(; wind_speed, atmospheric_pCO2, pH_scale) =
     EcosmoGasExchange(Float64(wind_speed), Float64(atmospheric_pCO2), Int(pH_scale))
 
-BoundaryConditions.boundary_condition_sides(config::EcosmoGasExchange, grid, forcing, boundary_config, tracers) =
+BoundaryConditions.boundary_condition_sides(config::EcosmoGasExchange, grid, forcing, boundary_data_config, tracers) =
     map(
         condition -> (top = condition,),
         ecosmo_surface_fluxes(;
@@ -331,21 +336,10 @@ struct WithProfiles{B,P}
     profiles::P
 end
 
-function Simulations.resolve_initial_conditions(
-    initial_conditions::WithProfiles,
-    grid,
-    forcing_file,
-    initial_state_file,
-    config,
-)
-    state = Simulations.resolve_initial_conditions(
-        initial_conditions.base,
-        grid,
-        forcing_file,
-        initial_state_file,
-        config,
-    )
-    profiles = map(profile -> (λ, φ, z) -> profile(z, config.start_date), initial_conditions.profiles)
+function Simulations.resolve_initial_conditions(initial_conditions::WithProfiles, grid, config, tracers)
+    state = Simulations.resolve_initial_conditions(initial_conditions.base, grid, config, tracers)
+    date = start_date(run_config(config))
+    profiles = map(profile -> (λ, φ, z) -> profile(z, date), initial_conditions.profiles)
     return merge(state, profiles)
 end
 
@@ -411,11 +405,11 @@ BoundaryData.boundary_variable_names(config::EcosmoBoundaries) = merge(
     Dict(String(name) => String(name) for name in keys(ECOSMO_PROFILES)),
 )
 
-BoundaryData.download_boundaries(target_grid, config::EcosmoBoundaries) =
-    BoundaryData.download_boundaries(target_grid, config.base)
+BoundaryData.fetch_boundary_data(target_grid, config::EcosmoBoundaries) =
+    BoundaryData.fetch_boundary_data(target_grid, config.base)
 
-function BoundaryData.prepare_boundaries(target_grid, config::EcosmoBoundaries; coverage = nothing)
-    result = BoundaryData.prepare_boundaries(target_grid, config.base; coverage)
+function BoundaryData.regrid_boundary_data(target_grid, config::EcosmoBoundaries; coverage = nothing)
+    result = BoundaryData.regrid_boundary_data(target_grid, config.base; coverage)
     append_boundary_variables!(result.output_file, config.open_edges, ECOSMO_PROFILES)
 
     appended = [
@@ -460,7 +454,7 @@ Rivers.river_locations(rivers::EcosmoRivers) = Rivers.river_locations(rivers.bas
 Rivers.river_discharge(rivers::EcosmoRivers, times) = Rivers.river_discharge(rivers.base, times)
 Rivers.river_search_radius(rivers::EcosmoRivers) = Rivers.river_search_radius(rivers.base)
 Rivers.river_maximum_inflow_velocity(rivers::EcosmoRivers) = Rivers.river_maximum_inflow_velocity(rivers.base)
-Rivers.download_rivers(target_grid, rivers::EcosmoRivers) = Rivers.download_rivers(target_grid, rivers.base)
+Rivers.fetch_rivers(target_grid, rivers::EcosmoRivers) = Rivers.fetch_rivers(target_grid, rivers.base)
 
 function Rivers.river_series(rivers::EcosmoRivers, times)
     series = Rivers.river_series(rivers.base, times)
@@ -569,8 +563,8 @@ FjordConfig(
         ),
         river_concentrations(),
     ),
-    boundary_config = EcosmoBoundaries(
-        NorKystBoundariesConfig(
+    boundary_data_config = EcosmoBoundaries(
+        NorKystBoundaryDataConfig(
             data_root        = data_root,
             output_directory = "norkyst_hourly",
             output_file      = "boundaries.nc",
@@ -598,73 +592,73 @@ FjordConfig(
         padding          = 0.1,
         years            = years,
     ),
-    simulation_config = SimulationConfig(
+    model_config = CoupledHydrostaticModel(
+        buoyancy           = SeawaterBuoyancy(FT, equation_of_state = TEOS10EquationOfState(FT)),
+        closure            = BoundarySponge(
+            base = (
+                # 7e-7 rather than `oslofjorden.jl`'s 7e-6, as in `oslofjorden_validation.jl`,
+                # where 7e-6 mixed the columns towards uniform and freshened the sill basins.
+                # Over 640 days at 7e-7 the salinity RMSE against 216 casts was 1.73 g/kg and
+                # the temperature RMSE 1.22 °C. Unmeasured here: check `e` against the floor.
+                CATKEVerticalDiffusivity(FT; minimum_tke = 7e-7),
+                # The validation run's ν = 2e4 m⁴ s⁻¹ scaled by (500/193)⁴ = 45, which keeps its
+                # damping times: about 72 min for the 2Δx mode and 56 h at 8Δx. The explicit
+                # limit Δt ≤ Δx⁴/32ν₄ is 2000 s at the narrowest 488 m cells.
+                #
+                # κ is 0, as there: κ = 2e3 left the deep-basin salt budgets unchanged over
+                # 60 days but overshot at fronts, leaving 169 wet cells below 0 g/kg.
+                HorizontalScalarBiharmonicDiffusivity(FT; ν = 9e5, κ = 0),
+            ),
+            # The validation run's 16 cells, 8 km here against its 3.2 km, which is under 5 % of
+            # this box on each side.
+            width_cells = 16,
+            # Its 30 and 15 m² s⁻¹ scaled by (500/193)² = 6.7. Δt ≤ Δx²/4ν is 300 s at the
+            # narrowest cells, above `max_time_step`.
+            viscosity   = 200.0,
+            diffusivity = 100.0,
+        ),
+        # Salinity bounded, as in `oslofjorden_validation.jl`, where plain WENO drove salinity
+        # below TEOS10's -32 psu floor beside a large river entering shallow columns. A
+        # NamedTuple leaves any tracer it omits on `Centered()`, so it names CATKE's `e` and
+        # every ECOSMO tracer as well. ECOSMO's state repair clips their undershoots.
+        tracer_advection   = merge(
+            (T = WENO(FT), S = WENO(FT; bounds = (0, 40)), e = WENO(FT)),
+            NamedTuple{ECOSMO_TRACERS}(map(_ -> WENO(FT), ECOSMO_TRACERS)),
+        ),
+        momentum_advection = WENOVectorInvariant(FT),
+        # The whole list: Oceananigans adds a biogeochemistry's tracers only when none of them
+        # is named, and `model_tracers` decides the river sources, the open-boundary
+        # conditions and the initial conditions before the model exists.
+        tracers            = (:T, :S, ECOSMO_TRACERS...),
+        coriolis           = HydrostaticSphericalCoriolis(FT),
+        sea_ice            = FreezingLimitedOceanTemperature(FT),
+        free_surface       = SplitExplicitFreeSurfaceConfig(cfl = 0.7),
+        extra_kwargs       = (;),
+    ),
+    biogeochemistry_config = EcosmoConfig(
+        configuration           = ecosmo_configuration,
+        surface_shortwave       = surface_shortwave,
+        bottom_drag_coefficient = BOTTOM_DRAG_COEFFICIENT,
+        start_day_of_year       = START_DAY_OF_YEAR,
+    ),
+    boundary_condition_configs = (
+        AirSeaFluxes(),
+        QuadraticBottomDrag(coefficient = BOTTOM_DRAG_COEFFICIENT),
+        # Marchesiello et al. (2001): nudge hard on inflow, radiate on outflow. Oslofjord's
+        # timescales, applied to every open edge.
+        OpenLateralBoundaryFromData(
+            inflow_timescale  = 3hours,
+            outflow_timescale = 360days,
+        ),
+        EcosmoGasExchange(
+            wind_speed       = WIND_SPEED,
+            atmospheric_pCO2 = ATMOSPHERIC_PCO2,
+            pH_scale         = ecosmo_configuration.pH_scale,
+        ),
+    ),
+    run_config = RunConfig(
         results_root       = fjord_results_root("moro"),
         architecture       = :auto,
-        model              = CoupledHydrostaticSimulation(
-            buoyancy           = SeawaterBuoyancy(FT, equation_of_state = TEOS10EquationOfState(FT)),
-            closure            = BoundarySponge(
-                base = (
-                    # 7e-7 rather than `oslofjorden.jl`'s 7e-6, as in `oslofjorden_validation.jl`,
-                    # where 7e-6 mixed the columns towards uniform and freshened the sill basins.
-                    # Over 640 days at 7e-7 the salinity RMSE against 216 casts was 1.73 g/kg and
-                    # the temperature RMSE 1.22 °C. Unmeasured here: check `e` against the floor.
-                    CATKEVerticalDiffusivity(FT; minimum_tke = 7e-7),
-                    # The validation run's ν = 2e4 m⁴ s⁻¹ scaled by (500/193)⁴ = 45, which keeps its
-                    # damping times: about 72 min for the 2Δx mode and 56 h at 8Δx. The explicit
-                    # limit Δt ≤ Δx⁴/32ν₄ is 2000 s at the narrowest 488 m cells.
-                    #
-                    # κ is 0, as there: κ = 2e3 left the deep-basin salt budgets unchanged over
-                    # 60 days but overshot at fronts, leaving 169 wet cells below 0 g/kg.
-                    HorizontalScalarBiharmonicDiffusivity(FT; ν = 9e5, κ = 0),
-                ),
-                # The validation run's 16 cells, 8 km here against its 3.2 km, which is under 5 % of
-                # this box on each side.
-                width_cells = 16,
-                # Its 30 and 15 m² s⁻¹ scaled by (500/193)² = 6.7. Δt ≤ Δx²/4ν is 300 s at the
-                # narrowest cells, above `max_time_step`.
-                viscosity   = 200.0,
-                diffusivity = 100.0,
-            ),
-            # Salinity bounded, as in `oslofjorden_validation.jl`, where plain WENO drove salinity
-            # below TEOS10's -32 psu floor beside a large river entering shallow columns. A
-            # NamedTuple leaves any tracer it omits on `Centered()`, so it names CATKE's `e` and
-            # every ECOSMO tracer as well. ECOSMO's state repair clips their undershoots.
-            tracer_advection   = merge(
-                (T = WENO(FT), S = WENO(FT; bounds = (0, 40)), e = WENO(FT)),
-                NamedTuple{ECOSMO_TRACERS}(map(_ -> WENO(FT), ECOSMO_TRACERS)),
-            ),
-            momentum_advection = WENOVectorInvariant(FT),
-            # The whole list: Oceananigans adds a biogeochemistry's tracers only when none of them
-            # is named, and `model_tracers` decides the river sources, the open-boundary
-            # conditions and the initial conditions before the model exists.
-            tracers            = (:T, :S, ECOSMO_TRACERS...),
-            coriolis           = HydrostaticSphericalCoriolis(FT),
-            sea_ice            = FreezingLimitedOceanTemperature(FT),
-            biogeochemistry    = EcosmoConfig(
-                configuration           = ecosmo_configuration,
-                surface_shortwave       = surface_shortwave,
-                bottom_drag_coefficient = BOTTOM_DRAG_COEFFICIENT,
-                start_day_of_year       = START_DAY_OF_YEAR,
-            ),
-            free_surface       = SplitExplicitFreeSurfaceConfig(cfl = 0.7),
-            extra_kwargs       = (;),
-        ),
-        boundary_conditions = MergedBoundaryConditions(
-            AirSeaFluxes(),
-            QuadraticBottomDrag(coefficient = BOTTOM_DRAG_COEFFICIENT),
-            # Marchesiello et al. (2001): nudge hard on inflow, radiate on outflow. Oslofjord's
-            # timescales, applied to every open edge.
-            OpenLateralBoundaryFromData(
-                inflow_timescale  = 3hours,
-                outflow_timescale = 360days,
-            ),
-            EcosmoGasExchange(
-                wind_speed       = WIND_SPEED,
-                atmospheric_pCO2 = ATMOSPHERIC_PCO2,
-                pH_scale         = ecosmo_configuration.pH_scale,
-            ),
-        ),
         writers = (
             # Daily, as in the validation run. One record of these five fields is 147 MB, so the
             # year is 54 GB.

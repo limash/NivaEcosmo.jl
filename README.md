@@ -92,13 +92,13 @@ mgC m⁻³ (Redfield), chlorophyll in mg m⁻³, `oxy`, `dic` and `alk` in mmol 
 says how to install and run it. It follows FjordSim's `examples/oslofjorden_npzd.jl`, through the
 hooks FjordSim offers an out-of-tree setup:
 
-- **The model.** An `AbstractBiogeochemistryConfig` whose `Simulations.model_biogeochemistry(config,
-  grid)` method builds `ECOSMO`, because `ECOSMO` needs the grid and a setup file is evaluated
-  before there is one. The sediment's pools are set there too, since they are not model fields.
+- **The model.** An `AbstractBiogeochemistryConfig`, the setup's `biogeochemistry_config`, whose
+  `Simulations.model_biogeochemistry(config, grid)` method builds `ECOSMO`, because `ECOSMO` needs
+  the grid and a setup file is evaluated before there is one. The sediment's pools are set there too, since they are not model fields.
   `tracers` must name all of them, `(:T, :S, ECOSMO_TRACERS...)`, and so must a `NamedTuple`
   `tracer_advection`: a tracer it omits is advected by `Centered()`.
 - **Gas exchange.** An `AbstractBoundaryConditionConfig` whose `boundary_condition_sides` returns
-  `ecosmo_surface_fluxes` as top conditions, one more piece of `MergedBoundaryConditions`.
+  `ecosmo_surface_fluxes` as top conditions, one more piece of `boundary_condition_configs`.
   FjordSim's `AirSeaFluxes` gives a top condition to T and S only.
 - **Open boundaries.** `OpenLateralBoundaryFromData` radiates every model tracer towards its
   prepared series and raises for a tracer with none, so an `AbstractBoundaryDataConfig` wrapping the
