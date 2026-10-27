@@ -4,8 +4,8 @@ to Julia as an OceanBioME biogeochemistry for Oceananigans models.
 
 The processes are pointwise functions shared by every driver — `interior_rates`, `bottom_fluxes`,
 `oxygen_surface_flux`, `carbonate_diagnostics`, `carbon_dioxide_surface_flux`, `day_length`,
-`gotm_light` — written to round as the Fortran does, so that a run can be compared with FABM's
-number for number. [`ECOSMO`](@ref) assembles them into a model for Oceananigans.
+`gotm_light` — computing in the float type of the parameters and constants they are given.
+[`ECOSMO`](@ref) assembles them into a model for Oceananigans, in the grid's float type.
 """
 module NivaEcosmo
 

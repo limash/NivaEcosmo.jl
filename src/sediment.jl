@@ -24,15 +24,17 @@ Base.@kwdef struct QuadraticBottomStress{FT}
 end
 
 """
-    EcosmoSediment(parameters, bottom_stress)
+    EcosmoSediment(parameters, constants, bottom_stress)
 
 The sediment biogeochemistry of ECOSMO, for `OceanBioME.Sediments.BiogeochemicalSediment`. Build
 the coupled sediment with [`ecosmo_sediment`](@ref).
 
-`bottom_stress` is a constant in Pa or a [`QuadraticBottomStress`](@ref).
+`constants` is [`ecosmo_constants`](@ref) in the parameters' float type, and `bottom_stress` a
+constant in Pa or a [`QuadraticBottomStress`](@ref).
 """
-struct EcosmoSediment{FT, B} <: AbstractSedimentBiogeochemistry
+struct EcosmoSediment{FT, K, B} <: AbstractSedimentBiogeochemistry
     parameters :: EcosmoParameters{FT}
+    constants :: K
     bottom_stress :: B
 end
 
@@ -47,7 +49,8 @@ With the default `bottom_stress = 0` the bottom stress never reaches `crBotStr`:
 calcite settle and nothing is resuspended.
 """
 ecosmo_sediment(grid; parameters = EcosmoParameters(eltype(grid)), bottom_stress = 0) =
-    BiogeochemicalSediment(grid, EcosmoSediment(parameters, convert_stress(eltype(grid), bottom_stress)))
+    BiogeochemicalSediment(grid, EcosmoSediment(parameters, ecosmo_constants(eltype(grid)),
+                                                convert_stress(eltype(grid), bottom_stress)))
 
 convert_stress(FT, τ::Number) = convert(FT, τ)
 convert_stress(FT, τ::QuadraticBottomStress) = QuadraticBottomStress{FT}(τ.drag_coefficient, τ.reference_density)
@@ -75,7 +78,8 @@ end
     temp = @inbounds tracked.T[i, j, 1]
     om_cal = @inbounds tracked.Om_cal[i, j, 1]
 
-    return bottom_fluxes(s.parameters, c, pools, temp, om_cal, bottom_stress(i, j, s.bottom_stress, tracked))
+    τ = bottom_stress(i, j, s.bottom_stress, tracked)
+    return bottom_fluxes(s.parameters, s.constants, c, pools, temp, om_cal, τ)
 end
 
 for name in ECOSMO_SEDIMENT_FIELDS

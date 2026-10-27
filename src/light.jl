@@ -32,7 +32,7 @@ PAR and shortwave (W m⁻²) at depth `z` below a surface shortwave flux `swr0`,
 the chlorophyll attenuation integrated from the surface to `z`: `(; par, swr)`.
 """
 @inline function gotm_light(swr0, A, g1, g2, z, bioext)
-    par = swr0 * (1.0 - A) * exp(-z / g2 - bioext)
+    par = swr0 * (1 - A) * exp(-z / g2 - bioext)
     swr = par + swr0 * A * exp(-z / g1)
     return (; par, swr)
 end
@@ -89,7 +89,8 @@ end
                                         A, g1, g2, p, flachl, diachl)
     i, j = @index(Global, NTuple)
 
-    swr0 = getbc(surface_shortwave, i, j, grid, clock, model_fields)
+    # In the grid's float type, whatever type the shortwave is given in.
+    swr0 = convert(eltype(grid), getbc(surface_shortwave, i, j, grid, clock, model_fields))
     z = zero(grid)
     bioext = zero(grid)
 
@@ -97,13 +98,13 @@ end
         dz = Δzᶜᶜᶜ(i, j, k, grid)
         ext = attenuation_coefficient(p, flachl[i, j, k], diachl[i, j, k])
 
-        z = z + dz * 0.5
-        bioext = bioext + ext * dz * 0.5
+        z = z + dz / 2
+        bioext = bioext + ext * dz / 2
 
         PAR[i, j, k] = gotm_light(swr0, A, g1, g2, z, bioext).par
 
-        z = z + dz * 0.5
-        bioext = bioext + ext * dz * 0.5
+        z = z + dz / 2
+        bioext = bioext + ext * dz / 2
     end
 end
 

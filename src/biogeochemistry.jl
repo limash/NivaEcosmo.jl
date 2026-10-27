@@ -31,8 +31,9 @@ const CARBONATE_FIELDS = (:pH, :pCO2, :Carb, :Om_cal)
 The OceanBioME underlying biogeochemistry for ECOSMO. Built by [`ECOSMO`](@ref), which wraps it
 in an OceanBioME `Biogeochemistry` together with its light and sediment.
 """
-struct EcosmoBiogeochemistry{FT, W, C, D, L, R} <: AbstractBiogeochemistry
+struct EcosmoBiogeochemistry{FT, K, W, C, D, L, R} <: AbstractBiogeochemistry
     parameters :: EcosmoParameters{FT}
+    constants :: K
     pH_scale :: Int
     sinking_velocities :: W
     carbonate :: C
@@ -44,6 +45,7 @@ end
 
 Adapt.adapt_structure(to, bgc::EcosmoBiogeochemistry) =
     EcosmoBiogeochemistry(bgc.parameters,
+                          bgc.constants,
                           bgc.pH_scale,
                           adapt(to, bgc.sinking_velocities),
                           adapt(to, bgc.carbonate),
@@ -113,6 +115,7 @@ function ECOSMO(grid::AbstractGrid{FT};
     set!(carbonate.Om_cal, 4)
 
     underlying = EcosmoBiogeochemistry(parameters,
+                                       ecosmo_constants(FT),
                                        Int(pH_scale),
                                        sinking_velocity_fields(grid, parameters),
                                        carbonate,
@@ -122,7 +125,7 @@ function ECOSMO(grid::AbstractGrid{FT};
                                        density)
 
     if repair_state
-        repair = ClipToMinimum(ECOSMO_MINIMA)
+        repair = ClipToMinimum(map(value -> convert(FT, value), ECOSMO_MINIMA))
         modifiers = isnothing(modifiers) ? repair :
                     modifiers isa Tuple ? (repair, modifiers...) : (repair, modifiers)
     end
@@ -180,7 +183,7 @@ end
     E0 = @inbounds auxiliary_fields.PAR[i, j, k]
     om_cal = @inbounds auxiliary_fields.Om_cal[i, j, k]
 
-    return interior_rates(bgc.parameters, c, temp, D, E0, om_cal)
+    return interior_rates(bgc.parameters, bgc.constants, c, temp, D, E0, om_cal)
 end
 
 # Each tracer evaluates the whole model and keeps its own rate; what it does not use is compiled
@@ -207,21 +210,22 @@ function update_biogeochemical_state!(model, bgc::EcosmoBiogeochemistry)
     arch = architecture(grid)
 
     launch!(arch, grid, :xy, _compute_day_length!,
-            bgc.day_length, grid, bgc.latitude, day_of_year(bgc, model.clock))
+            bgc.day_length, grid, bgc.constants, bgc.latitude, day_of_year(bgc, model.clock))
 
     tracers = model.tracers
     launch!(arch, grid, :xyz, _compute_carbonate!,
-            bgc.carbonate, grid, tracers.T, tracers.S, tracers.dic, tracers.alk, bgc.density, bgc.pH_scale)
+            bgc.carbonate, grid, bgc.constants, tracers.T, tracers.S, tracers.dic, tracers.alk, bgc.density,
+            bgc.pH_scale)
 
     return nothing
 end
 
-@kernel function _compute_day_length!(D, grid, latitude, yday)
+@kernel function _compute_day_length!(D, grid, constants, latitude, yday)
     i, j = @index(Global, NTuple)
-    @inbounds D[i, j, 1] = day_length(column_latitude(i, j, grid, latitude), yday)
+    @inbounds D[i, j, 1] = day_length(constants, column_latitude(i, j, grid, latitude), yday)
 end
 
-@kernel function _compute_carbonate!(carbonate, grid, T, S, dic, alk, density, pH_scale)
+@kernel function _compute_carbonate!(carbonate, grid, constants, T, S, dic, alk, density, pH_scale)
     i, j, k = @index(Global, NTuple)
 
     @inbounds if !immersed_cell(i, j, k, grid)
@@ -231,7 +235,7 @@ end
         previous = (pH = carbonate.pH[i, j, k], pCO2 = carbonate.pCO2[i, j, k],
                     CarbA = zero(ρ), BiCarb = zero(ρ), Carb = carbonate.Carb[i, j, k])
 
-        d = carbonate_diagnostics(dic[i, j, k], alk[i, j, k], T[i, j, k], S[i, j, k], ρ, pressure,
+        d = carbonate_diagnostics(constants, dic[i, j, k], alk[i, j, k], T[i, j, k], S[i, j, k], ρ, pressure,
                                   previous, pH_scale)
 
         carbonate.pH[i, j, k] = d.pH

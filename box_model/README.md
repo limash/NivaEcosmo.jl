@@ -39,12 +39,11 @@ julia --project=box_model box_model/compare.jl ~/src/niva-ecosmo/box_model/outpu
 ## Agreement with the Fortran
 
 Against `~/src/niva-ecosmo/box_model/output.nc` (pyfabm, niva-ecosmo commit `b351e6f`), the largest
-difference over the year in any state variable or diagnostic is 3.3 × 10⁻¹⁵ of that variable's
-largest value, and the `--closed` run conserves total phosphorus to the same relative 1.8 × 10⁻¹⁴
-as pyfabm's. Step by step, given the same state, the rates agree to a few units in the last place
-and most are bit-identical.
+difference over the year in any state variable or diagnostic is 1.1 × 10⁻¹⁴ of that variable's
+largest value (`Om_cal`; the carbonate diagnostics are the furthest), and the `--closed` run
+conserves total phosphorus to a relative 1.9 × 10⁻¹⁴, as pyfabm's does to 1.8 × 10⁻¹⁴.
 
-What remains is the rounding of `exp`, `log`, `pow` and the trigonometric functions, which Julia
-implements itself and gfortran takes from glibc. Everything else rounds the same: the expressions
-keep the Fortran's evaluation order, `x**37` is the multiplication chain gfortran emits, and the
-two single-precision literals of the carbonate module are single precision here too.
+The difference is rounding: the Julia formulas are not written in the Fortran's form, and Julia
+implements `exp`, `log`, `pow` and the trigonometric functions itself where gfortran takes them
+from glibc. The two single-precision literals of the carbonate module are single precision here
+too.

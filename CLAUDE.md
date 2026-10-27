@@ -38,8 +38,9 @@ layers:
 1. **Pointwise process functions** of one cell, one per Fortran routine: `interior_rates` (`do`),
    `bottom_fluxes` (`do_bottom`), `oxygen_surface_flux` (`do_surface`), `sinking_speeds`
    (`src/ecosmo.jl`); `carbonate_diagnostics`, `carbon_dioxide_surface_flux` (`src/carbonate.jl`);
-   `day_length`; `gotm_light`. They return NamedTuples (`(; rates, diagnostics)`, `(; fluxes,
-   sediment)`) keyed by FABM names.
+   `day_length`; `gotm_light`. They take the parameters and `ecosmo_constants(FT)`
+   (`src/constants.jl`) and return NamedTuples (`(; rates, diagnostics)`, `(; fluxes, sediment)`)
+   keyed by FABM names.
 2. **Two drivers** call them: the OceanBioME wiring in `src/biogeochemistry.jl`, `src/sediment.jl`,
    `src/light.jl` and `src/boundary_conditions.jl`, and the box model (`box_model/run_box.jl`),
    which repeats pyfabm's `run_box.py` step for step. A process change goes in the pointwise
@@ -68,21 +69,24 @@ How the OceanBioME side is put together:
   `fabm_configuration` reads a niva-ecosmo `fabm.yaml` into parameters, light coefficients and
   initial values.
 
-## The Fortran-matching invariant
+## Precision and agreement with the Fortran
 
-The port's correctness claim is agreement with pyfabm to ~10⁻¹⁵ relative, and most rates
-bit-identical. Every edit to a pointwise function must keep it:
-
-- Keep the Fortran's evaluation order and associativity (`a*b/c*d` stays `((a*b)/c)*d`). No
-  `muladd`, `fma`, `@fastmath`, or algebraic "simplification".
-- Integer powers are written as gfortran expands them (`x*x`, the multiplication chain for `x**37`).
-- Fortran names are kept (`muPs`, `up_nh4Ps`, `temp`, `E0c`) so a line can be checked against
-  `niva_ecosmo.F90`; parameter names are the `fabm.yaml` keys.
-- The two unsuffixed single-precision literals in `CO2SET` stay `Float64(771.54f0)` and
-  `Float64(5.7789f0)`; constants derived in the Fortran (`redf(11:20)`) are derived the same way
-  in `src/constants.jl`, not written as decimals.
-- Behaviour copied from the Fortran on purpose, including KNOWN_ISSUES #1–3, is not "fixed" in
-  Julia alone: a change there is made in both implementations or the two stop matching.
+- The float type is chosen once, by the grid: `ECOSMO` builds `ecosmo_constants(FT)` from it, and
+  `EcosmoParameters(FT)`, `fabm_configuration(path, FT)` and `ecosmo_surface_fluxes(FT; ...)` take
+  the same `FT`. The box model is `Float64`.
+- A pointwise function contains no decimal literals. Every number in it is a parameter, an entry
+  of `ECOSMO_CONSTANTS` (`src/constants.jl`, with its source and units), or an exact integer
+  (`1 - x`, `x / 2`, `(temp - 10) / 10`). A new number goes in the table. Integer division `1 / 2`
+  is a `Float64`.
+- In `Float64` the box model agrees with pyfabm to ~10⁻¹⁴ of each variable's range; the `Float32`
+  agreement is in the README ("Float32"). The formulas need not copy the Fortran's form.
+- Parameter names are the `fabm.yaml` keys, and `interior_rates` and `bottom_fluxes` keep the
+  Fortran's variable names (`muPs`, `up_nh4Ps`, `E0c`) so a process can be found in
+  `niva_ecosmo.F90`.
+- Behaviour copied from the Fortran on purpose, including KNOWN_ISSUES #1–3 and the oddities noted
+  in `ECOSMO_CONSTANTS` (two single-precision coefficients, two compressibilities not divided by
+  1000), is not "fixed" in Julia alone: a change there is made in both implementations or the two
+  stop matching.
 - After touching a process, rerun the tests and the box model comparison.
 
 ## GPU & kernel compatibility
@@ -92,17 +96,18 @@ carbonate functions, tendency and sediment methods):
 
 - Mark with `@inline`; keep type-stable and allocation-free.
 - In new kernel code use `ifelse`, not `&&`/`||`/`?:`. The existing branches in the ported
-  functions (`if E0 > 1e-8`, the carbonate iteration) mirror the Fortran's control flow — `ifelse`
-  evaluates both sides — and stay as they are.
+  functions (`if E0 > constants.minimum_light`, the carbonate iteration) mirror the Fortran's
+  control flow — `ifelse` evaluates both sides — and stay as they are.
 - Never loop over grid points outside a kernel — use `launch!`.
 - Use `on_architecture` for CPU↔GPU transfers — never `Array()`/`CuArray()` directly.
 - Index fields with three indices, `field[i, j, k]`; 2D fields as `field[i, j, 1]`.
 - A struct that a kernel receives needs `Adapt.adapt_structure` for its field members (see
   `EcosmoBiogeochemistry`).
-- The pointwise functions use `Float64` literals (`0.0`, `1.0`) to round as the Fortran does. The
-  tests only build `Float64` grids, and nothing has been run on a GPU (README, "Performance").
-  Code outside the ported functions uses `zero(...)`/`convert(FT, ...)` rather than new
-  `Float64` literals.
+- Kernel code computes in the grid's `FT`: with the parameters and constants it is given,
+  `zero(...)`, `one(...)` and integers, never decimal literals. A user's function that may return
+  `Float64` (wind, shortwave) is converted to `eltype(grid)` where the kernel reads it. The tests
+  check `Float32` result types and a `Float32` run against a `Float64` one. Nothing has been run
+  on a GPU (README, "Performance").
 
 ## Type stability
 

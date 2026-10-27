@@ -14,6 +14,7 @@ FABM's `gotm/light`, the light model the configurations run with.
 
 | Path | Content |
 |---|---|
+| `src/constants.jl` | `ECOSMO_CONSTANTS` and `ecosmo_constants(FT)`: every fixed number of the processes, with its source and units |
 | `src/parameters.jl` | `EcosmoParameters`: every parameter with its Fortran name, default and FABM unit conversion |
 | `src/ecosmo.jl` | `interior_rates` (`do`), `oxygen_surface_flux` (`do_surface`), `bottom_fluxes` (`do_bottom`), `sinking_speeds` |
 | `src/carbonate.jl` | `co2_constants` (`CO2SET`), `carbonate_system` (`CO2DYN`/`CO2CLC`), `calcite_aragonite_saturation`, the carbonate `do` and `do_surface` |
@@ -28,15 +29,17 @@ FABM's `gotm/light`, the light model the configurations run with.
 | `test/runtests.jl` | tests |
 
 The processes are pointwise functions of one cell, shared by the OceanBioME kernels and the box
-model. They keep the Fortran's evaluation order, so the two implementations round alike.
+model. Every number in them is a parameter, an exact integer or an entry of `ECOSMO_CONSTANTS`
+(`src/constants.jl`), so they compute in the float type of the parameters and constants they are
+given.
 
 ## Does it match the Fortran?
 
 - **Box model, one year** (`box_model/`, the twin of niva-ecosmo's `run_box.py`): every state
-  variable and diagnostic agrees with pyfabm to within 3.3 × 10⁻¹⁵ of its range. Given the same
-  state, rates agree to a few units in the last place, and most are bit-identical. The remainder is
-  `exp`/`log`/`pow`/trigonometry rounding: Julia implements those itself, gfortran takes them from
-  glibc.
+  variable and diagnostic agrees with pyfabm to within 1.1 × 10⁻¹⁴ of its range, the carbonate
+  diagnostics being the furthest. The two round differently in the last places: the formulas are
+  not written in the Fortran's form, and Julia implements `exp`, `log`, `pow` and the trigonometric
+  functions itself where gfortran takes them from glibc.
 - **The OceanBioME model**: in a one-cell Oceananigans model, every tracer tendency equals the box
   model's interior rate plus surface and bottom flux over the cell thickness (relative 10⁻¹²), and
   the sediment tendencies are bit-identical (`test/runtests.jl`).
@@ -66,7 +69,7 @@ biogeochemistry = ECOSMO(grid;
                          pH_scale = configuration.pH_scale)
 
 boundary_conditions = map(bc -> FieldBoundaryConditions(top = bc),
-                          ecosmo_surface_fluxes(; wind_speed = 5.0, pH_scale = configuration.pH_scale))
+                          ecosmo_surface_fluxes(eltype(grid); wind_speed = 5.0, pH_scale = configuration.pH_scale))
 
 model = HydrostaticFreeSurfaceModel(grid; tracers = (:T, :S, ECOSMO_TRACERS...), biogeochemistry,
                                     boundary_conditions, buoyancy = SeawaterBuoyancy())
@@ -77,8 +80,27 @@ for name in (:sed1, :sed2, :sed3, :sed4)
 end
 ```
 
-The parameters' float type must be the grid's: `ECOSMO` takes its type from the grid, so a
-`Float32` grid needs `fabm_configuration(path, Float32)` or `EcosmoParameters(Float32; ...)`.
+The float type is the grid's: `ECOSMO` takes it from the grid, so a `Float32` grid needs
+`fabm_configuration(path, Float32)` or `EcosmoParameters(Float32; ...)`, and
+`ecosmo_surface_fluxes(Float32; ...)`.
+
+### Float32
+
+On a `Float32` grid the whole biogeochemistry computes in `Float32`: the parameters and
+`ecosmo_constants(Float32)` are converted once, when the model is built. A shortwave or wind
+function that returns `Float64` is converted where a kernel reads it.
+
+Against `Float64`, measured on 2000 random states and in `test/runtests.jl`'s 3D model:
+
+- Rates and bottom fluxes agree to within 7 × 10⁻⁷ of the cell's largest rate. After twenty
+  10-minute steps of the 3D model every tracer and sediment pool is within 7 × 10⁻⁷ of its largest
+  value, and total phosphorus is conserved to 3 × 10⁻⁸.
+- The carbonate system loses more. Its equilibrium constants are logarithms of polynomials whose
+  terms are up to a thousand times their sum, so the cancellation magnifies single-precision
+  rounding: `pCO2`, `Carb` and `Om_cal` are off by up to 2 × 10⁻⁴ relative (0.08 µatm at
+  400 µatm), `pH` by 10⁻⁵. The iteration converged in all 6000 states tried, 2000 on each pH scale.
+- The air-sea fluxes are differences between air and water: the CO₂ flux error is that of the
+  pCO₂ error, the O₂ error that of a 0.007 mmol m⁻³ departure from saturation.
 
 The tracers keep their FABM names and units (`ECOSMO_TRACERS`): `no3 nh4 pho sil oxy fla dia
 flachl diachl microzoo mesozoo det opa cal dom dic alk`, nutrients, plankton and organic matter in
@@ -144,3 +166,8 @@ Each tracer's tendency evaluates the whole interior model and keeps its own rate
 OceanBioME's models are written. What a tracer does not use is only partly compiled away, so this
 is the first thing to revisit if the biogeochemistry dominates a run's cost. The pointwise
 functions are type-stable and allocation-free. No GPU was available to test on.
+
+On GPUs whose `Float64` throughput is a small fraction of `Float32` (1/32 to 1/64 on most
+consumer and workstation cards, 1/2 on data-centre ones), run on a `Float32` grid: ECOSMO's
+arithmetic then stays in `Float32`. On a CPU, Julia's own `Float32` `^`, `log`, `log10` and `cos`
+compute internally in `Float64`; CUDA.jl replaces them with single-precision device functions.

@@ -315,7 +315,8 @@ EcosmoGasExchange(; wind_speed, atmospheric_pCO2, pH_scale) =
 BoundaryConditions.boundary_condition_sides(config::EcosmoGasExchange, grid, forcing, boundary_data_config, tracers) =
     map(
         condition -> (top = condition,),
-        ecosmo_surface_fluxes(;
+        ecosmo_surface_fluxes(
+            eltype(grid);
             wind_speed = config.wind_speed,
             atmospheric_pCO2 = config.atmospheric_pCO2,
             pH_scale = config.pH_scale,

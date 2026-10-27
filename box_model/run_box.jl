@@ -17,7 +17,7 @@
 
 using NivaEcosmo
 using NivaEcosmo: interior_rates, bottom_fluxes, oxygen_surface_flux, carbonate_diagnostics,
-    carbon_dioxide_surface_flux, day_length, gotm_light, attenuation_coefficient, ECOSMO_MINIMA,
+    carbon_dioxide_surface_flux, day_length, gotm_light, attenuation_coefficient, ecosmo_constants, ECOSMO_MINIMA,
     ECOSMO_PARAMETER_NAMES
 using Dates
 using NCDatasets
@@ -37,6 +37,7 @@ const S_OCEAN = 30.0           # salinity of inflowing outer-fjord water (PSU), 
 const Q_OCEAN = nothing        # constant outer-fjord inflow (m3/s); nothing = derive from the salt balance
 const BOTTOM_STRESS = 0.0      # (Pa) below crBotStr, so that detritus settles to the sediment
 const PCO2_AIR = 420.0         # atmospheric CO2 mole fraction (ppm)
+const CONSTANTS = ecosmo_constants(Float64)
 const DT = 600.0               # time step (s)
 const DIEL_LIGHT = true        # impose a diel cycle on the daily-mean shortwave radiation
 
@@ -165,7 +166,7 @@ function box_rates(configuration, state, env, carbonate)
     light_parameters = configuration.light
 
     # niva_ecosmo_daylength
-    D = day_length(LATITUDE, env.yday)
+    D = day_length(CONSTANTS, LATITUDE, env.yday)
 
     # gotm/light at the centre of the single layer
     ext = attenuation_coefficient(p, state.flachl, state.diachl)
@@ -174,16 +175,17 @@ function box_rates(configuration, state, env, carbonate)
 
     # niva_ecosmo_carbonate do
     pressure = 0.5 * DEPTH  # dbar
-    carbonate = carbonate_diagnostics(state.dic, state.alk, env.temp, env.salt, env.density, pressure,
+    carbonate = carbonate_diagnostics(CONSTANTS, state.dic, state.alk, env.temp, env.salt, env.density, pressure,
                                       carbonate, configuration.pH_scale)
 
-    interior = interior_rates(p, state, env.temp, D, light.par, carbonate.Om_cal)
+    interior = interior_rates(p, CONSTANTS, state, env.temp, D, light.par, carbonate.Om_cal)
 
-    surface = (oxy = oxygen_surface_flux(state.oxy, env.temp, env.salt, env.wind),
-               dic = carbon_dioxide_surface_flux(state.dic, state.alk, env.temp, env.salt, env.density, pressure,
-                                                 env.wind, PCO2_AIR, carbonate.pCO2, configuration.pH_scale))
+    surface = (oxy = oxygen_surface_flux(CONSTANTS, state.oxy, env.temp, env.salt, env.wind),
+               dic = carbon_dioxide_surface_flux(CONSTANTS, state.dic, state.alk, env.temp, env.salt, env.density,
+                                                 pressure, env.wind, PCO2_AIR, carbonate.pCO2,
+                                                 configuration.pH_scale))
 
-    bottom = bottom_fluxes(p, state, state, env.temp, carbonate.Om_cal, BOTTOM_STRESS)
+    bottom = bottom_fluxes(p, CONSTANTS, state, state, env.temp, carbonate.Om_cal, BOTTOM_STRESS)
 
     # FABM's get_sources: interior sources, then the surface fluxes over the cell thickness, then
     # the bottom fluxes over it
