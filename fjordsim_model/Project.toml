@@ -1,6 +1,8 @@
 [deps]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 FjordSim = "70d6b63c-c5d4-46ce-8d1e-8766361373eb"
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
 NivaEcosmo = "0fe4996b-995b-40d0-a594-b88dbf63442d"
 NumericalEarth = "904d977b-046a-4731-8b86-9235c0d1ef02"
