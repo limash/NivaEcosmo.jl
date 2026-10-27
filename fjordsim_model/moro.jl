@@ -52,15 +52,23 @@ using FjordSim.Configs:
     AbstractBoundaryConditionConfig,
     AbstractBoundaryDataConfig,
     AbstractRiverConfig,
+    AbstractWriterConfig,
     run_config,
     start_date
 using Oceananigans:
     CATKEVerticalDiffusivity,
+    Center,
     HydrostaticSphericalCoriolis,
+    JLD2Writer,
+    KernelFunctionOperation,
     SeawaterBuoyancy,
+    SpecifiedTimes,
+    TimeInterval,
     WENO,
     WENOVectorInvariant,
+    fields,
     set!
+using Oceananigans.BoundaryConditions: getbc
 using Oceananigans.TurbulenceClosures: HorizontalScalarBiharmonicDiffusivity
 using Oceananigans.Units: day, days, hour, hours, minutes, second
 using SeawaterPolynomials.TEOS10: TEOS10EquationOfState
@@ -75,7 +83,7 @@ using NivaEcosmo:
     fabm_configuration
 using NCDatasets: NCDataset, defVar
 using YAML
-using Dates: DateTime, dayofyear
+using Dates: DateTime, Millisecond, Month, dayofyear
 
 data_root = fjord_data_root("moro")
 FT = Float32
@@ -86,6 +94,9 @@ years = [2023]
 const START_DATE = DateTime(2023, 1, 1)
 # Days since midnight on 1 January, as ECOSMO's `start_day_of_year` counts them.
 const START_DAY_OF_YEAR = dayofyear(START_DATE) - 1
+# Midnight on the first of each later month of the year, in seconds of model time: where the hourly
+# surface writer starts a new file.
+const MONTH_STARTS = [(START_DATE + Month(month) - START_DATE) / Millisecond(1000) for month in 1:11]
 
 # Shared by the momentum drag and the sediment's resuspension stress, as NivaEcosmo asks: the
 # sediment's bottom stress should come from the same drag law as the ocean's.
@@ -466,6 +477,100 @@ function Rivers.river_series(rivers::EcosmoRivers, times)
     return series
 end
 
+# --- EcosmoSurfaceWriter: the surface of everything ECOSMO carries -----------------------------
+
+"""
+    EcosmoSurfaceWriter(; name, output_file, interval, split_times, overwrite_existing)
+
+A JLD2 snapshot every `interval` of the top cell of T, S, u, v, e, every ECOSMO tracer, the carbonate
+system (`pH`, `pCO2`, `Carb`, `Om_cal`) and `PAR`; of `η` and `day_length`; of the sediment pools
+`sed1`-`sed4`, one per column; and of the air-sea fluxes `oxy_surface_flux` (mmol O₂ m⁻² s⁻¹) and
+`dic_surface_flux` (mmol C m⁻² s⁻¹), positive into the water as in FABM. A new file part,
+`_part<n>.jld2`, starts at each of `split_times`, in seconds of model time.
+
+Its own writer because `FieldSnapshotWriter` writes whole fields, and only those `Oceananigans.fields`
+names: the sediment pools are not among them, and the gas fluxes exist only as boundary conditions.
+"""
+struct EcosmoSurfaceWriter <: AbstractWriterConfig
+    name::Symbol
+    output_file::String
+    interval::Float64
+    split_times::Vector{Float64}
+    overwrite_existing::Bool
+end
+
+EcosmoSurfaceWriter(; name, output_file, interval, split_times, overwrite_existing) = EcosmoSurfaceWriter(
+    Symbol(name),
+    String(output_file),
+    Float64(interval),
+    Float64.(split_times),
+    Bool(overwrite_existing),
+)
+
+Simulations.output_path_trait(::EcosmoSurfaceWriter) = Simulations.NamesOutputFile()
+
+# The boundary conditions are positive upward, as Oceananigans' fluxes are.
+@inline air_sea_flux(i, j, k, grid, condition, clock, model_fields) =
+    -getbc(condition, i, j, grid, clock, model_fields)
+
+"""
+    ecosmo_surface_outputs(model)
+
+What `EcosmoSurfaceWriter` writes, as the `NamedTuple` `JLD2Writer` takes. The 3D fields are views of
+their top level, which share the model's memory; the fluxes are computed when a record is written,
+with the fields the boundary conditions read.
+"""
+function ecosmo_surface_outputs(model)
+    model_fields = fields(model)
+    Nz = size(model.grid, 3)
+
+    names = (:T, :S, :u, :v, :e, ECOSMO_TRACERS..., NivaEcosmo.CARBONATE_FIELDS..., :PAR)
+    surface = NamedTuple{names}(map(name -> view(model_fields[name], :, :, Nz), names))
+
+    flux(name) = KernelFunctionOperation{Center,Center,Nothing}(
+        air_sea_flux,
+        model.grid,
+        model.tracers[name].boundary_conditions.top,
+        model.clock,
+        model_fields,
+    )
+
+    return merge(
+        surface,
+        (η = model_fields.η, day_length = model_fields.day_length),
+        model.biogeochemistry.sediment.fields,
+        (oxy_surface_flux = flux(:oxy), dic_surface_flux = flux(:dic)),
+    )
+end
+
+"""
+    attach_writer!(simulation, writer::EcosmoSurfaceWriter, config, loop)
+
+Attach a `JLD2Writer` to the ocean simulation, as FjordSim's `FieldSnapshotWriter` does: a fresh one
+each loop, with a fresh splitting schedule, since the clock restarts at zero.
+"""
+function Simulations.attach_writer!(simulation, writer::EcosmoSurfaceWriter, config, loop)
+    ocean_simulation = simulation.model.ocean
+
+    haskey(ocean_simulation.output_writers, writer.name) &&
+        close(pop!(ocean_simulation.output_writers, writer.name))
+
+    filepath = Simulations.loop_output_path(writer, config, loop)
+    mkpath(dirname(filepath))
+
+    ocean_simulation.output_writers[writer.name] = JLD2Writer(
+        ocean_simulation.model,
+        ecosmo_surface_outputs(ocean_simulation.model);
+        filename = filepath,
+        schedule = TimeInterval(writer.interval),
+        file_splitting = SpecifiedTimes(writer.split_times),
+        overwrite_files = writer.overwrite_existing,
+        with_halos = false,
+    )
+
+    return simulation
+end
+
 # --- The config ---------------------------------------------------------------------------------
 
 # The A20 v3aa parameters, unchanged, with the carbonate module's pH scale and the sediment's
@@ -695,13 +800,14 @@ FjordConfig(
                 interval           = 7days,
                 overwrite_existing = true,
             ),
-            # η goes to JLD2 because the NetCDF writer cannot write a (Center, Center, Nothing)
-            # output (see `FieldSnapshotWriter`).
-            FieldSnapshotWriter(
+            # Hourly, one file per calendar month. 35 surface fields of 396 x 315 Float32 values are
+            # 17.5 MB a record before compression, 153 GB over the year; `JLD2Writer` deflates by
+            # default.
+            EcosmoSurfaceWriter(
                 name               = :surface,
                 output_file        = "snapshots_surface.jld2",
-                variables          = (:η,),
-                interval           = 1day,
+                interval           = 1hour,
+                split_times        = MONTH_STARTS,
                 overwrite_existing = true,
             ),
             # The two permanent Kartverket gauges in the box, from Kartverket's station register
