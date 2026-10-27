@@ -743,9 +743,19 @@ FjordConfig(
         # below TEOS10's -32 psu floor beside a large river entering shallow columns. A
         # NamedTuple leaves any tracer it omits on `Centered()`, so it names CATKE's `e` and
         # every ECOSMO tracer as well. ECOSMO's state repair clips their undershoots.
+        #
+        # Bounded for the three that sink (KNOWN_ISSUES #6): plain WENO drained the cell above the
+        # seabed below zero, the state repair clipped it back, and the mass that created piled up in
+        # the bottom cell. On this grid's levels at 674.7 m, Float32, 1-minute steps, the bottom
+        # cell's detritus went from 5 to 4.2e5 mgC m⁻³ in 7 days with plain WENO, and the run's
+        # bottom cells were NaN by day 21; bounded, it settles at 19 with phosphorus conserved to 2e-6.
+        # The upper bound is far above any concentration these reach.
         tracer_advection   = merge(
             (T = WENO(FT), S = WENO(FT; bounds = (0, 40)), e = WENO(FT)),
             NamedTuple{ECOSMO_TRACERS}(map(_ -> WENO(FT), ECOSMO_TRACERS)),
+            NamedTuple{NivaEcosmo.ECOSMO_SINKING_TRACERS}(
+                map(_ -> WENO(FT; bounds = FT.((0, 1e6))), NivaEcosmo.ECOSMO_SINKING_TRACERS),
+            ),
         ),
         momentum_advection = WENOVectorInvariant(FT),
         # The whole list: Oceananigans adds a biogeochemistry's tracers only when none of them

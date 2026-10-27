@@ -2,7 +2,8 @@
 
 Found while porting niva-ecosmo (commit `b351e6f`). NivaEcosmo copies the Fortran's behaviour,
 including issues 1–3, so that the two implementations give the same numbers. Issues 4 and 5 are in
-the Julia packages, and NivaEcosmo works around them.
+the Julia packages, and NivaEcosmo works around them. Issue 6 is in how a host advects the sinking
+tracers.
 
 | # | Issue | Where | Affects the shipped `fabm.yaml`? |
 |---|---|---|---|
@@ -11,6 +12,7 @@ the Julia packages, and NivaEcosmo works around them.
 | 3 | Settling uses the minimum sinking speed | Fortran | **yes, in 3D** |
 | 4 | Sinking through an immersed seabed loses mass | Oceananigans | fixed in NivaEcosmo |
 | 5 | Sediment fluxes are divided by the wrong cell height | OceanBioME | fixed in NivaEcosmo |
+| 6 | Unbounded WENO and the state repair create mass at the seabed | the host's advection | fixed in `moro.jl` |
 
 The background for issues 1 and 2: an *aggregate variable* in FABM is a sum that the models add
 to, such as the total light attenuation. FABM stores one weight per variable in each sum. If a
@@ -107,3 +109,31 @@ cell below it is 2 m high. Their centres are 4 m apart. The sediment releases 12
 
 **Fix in NivaEcosmo.** `src/sediment.jl` replaces OceanBioME's `update_tendencies!` for the ECOSMO
 sediment with one that divides by `Δzᶜᶜᶜ`. Worth reporting to OceanBioME.
+
+## 6. Unbounded WENO and the state repair create sinking mass at the seabed
+
+`det`, `opa` and `cal` sink, and the sinking speed is zero on the seabed face (issue 4), so the
+bottom cell gains what the cell above loses. With WENO, the flux through the face between the two
+is reconstructed from a stencil that reaches into the bottom cell. Once the bottom cell is richer
+than the cell above, that flux takes more out of the cell above than it holds. The cell above goes
+negative, the state repair (`ClipToMinimum`, on by default) sets it back to zero, and the mass the
+clip adds sinks into the bottom cell on the next step. The bottom cell grows without bound, the
+sediment's settling carries the excess into `sed1`, `sed2` and `sed4`, and the run ends in NaN. A
+thin partial bottom cell under a thick level (`PartialCellBottom`) makes it much faster.
+
+**Example.** A column of Moro's levels with the seabed at 674.7 m: a 6.7 m partial bottom cell
+under a 33.5 m one. Detritus starts at 5 mgC m⁻³ and sinks for 7 days (Float32, 1-minute steps, no
+currents or mixing):
+
+| Advection | Bottom-cell `det` after 7 days | Phosphorus created |
+|---|---|---|
+| `WENO()` | 4.2 × 10⁵ mgC m⁻³ | 8 times the column's total |
+| `WENO()`, full 33.5 m bottom cell | 48 mgC m⁻³, still growing | 0.3 % |
+| `WENO(bounds = (0, 1e6))` | 19 mgC m⁻³ | 2 × 10⁻⁶ |
+| `UpwindBiased(order = 1)` | 20 mgC m⁻³ | 2 × 10⁻⁶ |
+
+The Moro run (`fjordsim_model/moro.jl`, 2023) with plain WENO had more than 2,500 such bottom cells
+by day 14, NaN in its deep water by day 21, and NaN in every surface water cell five hours later.
+
+**Fix.** Give the sinking tracers (`ECOSMO_SINKING_TRACERS`) a bounded WENO, as `moro.jl` does, or an
+upwind scheme. Nothing in NivaEcosmo chooses the advection scheme; the host does.
