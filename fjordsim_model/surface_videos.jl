@@ -1,6 +1,6 @@
 # Videos of Moro's hourly surface snapshots, one monthly part file of `EcosmoSurfaceWriter`
-# (`moro.jl`) at a time: temperature, salinity, surface currents, oxygen and pH, one MP4 each,
-# beside the file or in `--out`.
+# (`moro.jl`) at a time: temperature, salinity, surface currents, oxygen, pH, diatoms and nitrate,
+# one MP4 each, beside the file or in `--out`.
 #
 # Usage:
 #     julia --project=fjordsim_model fjordsim_model/surface_videos.jl \
@@ -13,6 +13,7 @@ using Dates: DateTime, Millisecond, format
 using FjordSim: fjord_data_root
 using JLD2: jldopen
 using NCDatasets: NCDataset
+using NivaEcosmo: NivaEcosmo
 using Statistics: quantile
 import CairoMakie as M
 
@@ -40,12 +41,24 @@ function current_speed(file, iteration)
     return hypot.(u, v)
 end
 
+# ECOSMO keeps nitrate in its Redfield carbon equivalent, mgC m⁻³.
+nitrate(file, iteration) = surface_values("no3")(file, iteration) ./ NivaEcosmo.MGC_PER_MMOL_N
+
+# Diatoms span three orders of magnitude between the open coast and a fjord bloom, hence `log10`.
 const VIDEOS = (
-    (name = "temperature", label = "Temperature (°C)", colormap = :thermal, values = surface_values("T"), arrows = false),
-    (name = "salinity", label = "Salinity (g kg⁻¹)", colormap = :haline, values = surface_values("S"), arrows = false),
-    (name = "currents", label = "Current speed (m s⁻¹)", colormap = :speed, values = current_speed, arrows = true),
-    (name = "oxygen", label = "Oxygen (mmol O₂ m⁻³)", colormap = :viridis, values = surface_values("oxy"), arrows = false),
-    (name = "pH", label = "pH", colormap = :plasma, values = surface_values("pH"), arrows = false),
+    (name = "temperature", label = "Temperature (°C)", colormap = :thermal, colorscale = identity,
+     values = surface_values("T"), arrows = false),
+    (name = "salinity", label = "Salinity (g kg⁻¹)", colormap = :haline, colorscale = identity,
+     values = surface_values("S"), arrows = false),
+    (name = "currents", label = "Current speed (m s⁻¹)", colormap = :speed, colorscale = identity,
+     values = current_speed, arrows = true),
+    (name = "oxygen", label = "Oxygen (mmol O₂ m⁻³)", colormap = :viridis, colorscale = identity,
+     values = surface_values("oxy"), arrows = false),
+    (name = "pH", label = "pH", colormap = :plasma, colorscale = identity, values = surface_values("pH"), arrows = false),
+    (name = "diatoms", label = "Diatoms (mgC m⁻³)", colormap = :algae, colorscale = log10,
+     values = surface_values("dia"), arrows = false),
+    (name = "nitrate", label = "Nitrate (mmol N m⁻³)", colormap = :matter, colorscale = identity, values = nitrate,
+     arrows = false),
 )
 
 """
@@ -109,8 +122,8 @@ function record_video(path, file, iterations, times, grid, video)
                   aspect = M.AxisAspect(aspect))
     # Fixed to the grid, so an arrow at the edge is clipped rather than widening the axis.
     M.limits!(axis, extrema(longitude)..., extrema(latitude)...)
-    field = M.heatmap!(axis, longitude, latitude, values; colormap = video.colormap, colorrange,
-                       nan_color = :magenta)
+    field = M.heatmap!(axis, longitude, latitude, values; colormap = video.colormap, colorscale = video.colorscale,
+                       colorrange, nan_color = :magenta)
     M.heatmap!(axis, longitude, latitude, ifelse.(land, 1.0f0, NaN32); colormap = [:gray70, :gray70],
                colorrange = (0, 2), nan_color = :transparent)
     M.Colorbar(figure[1, 2], field; label = video.label)
