@@ -18,9 +18,9 @@
 #
 # The physics is the validation run's, with every coefficient that depends on grid spacing scaled
 # from 193 m to 500 m: bounded WENO for salinity, CATKE's `minimum_tke` at 7e-7, the biharmonic
-# tracer diffusivity κ at 0, `oslofjorden.jl`'s levels with 5.06 m levels between 41 and 132 m,
-# its bathymetry knobs, sponge, bottom drag, open-boundary timescales and time stepping. Each is
-# argued beside its value. Three things do not carry over. The validation run reads the Norkyst-v3
+# tracer diffusivity κ at 0, `oslofjorden.jl`'s top levels, its bathymetry knobs, sponge, bottom
+# drag and open-boundary timescales. Each is argued beside its value, as are the three it does not
+# take: 10 m levels between 41 and 131 m, a stronger slope limit and a CFL of 0.5. Three things do not carry over. The validation run reads the Norkyst-v3
 # hindcast because its window predates 2017, while 2023 is in the operational archive. Its tide
 # correction was fitted at Viker. Its initial state is a previous run's.
 #
@@ -383,6 +383,10 @@ function append_boundary_variables!(filepath, edges, profiles)
 
                 variable = defVar(
                     ds, variable_name, Float32, (along, "Nz", "time");
+                    # One record per chunk, as `prepare_boundary_data` writes its own variables. Left
+                    # to netCDF, the chunks span over a thousand records, and the run decompresses
+                    # all of them for each page it reads.
+                    chunksizes = [n_along, length(z), 1],
                     deflatelevel = BOUNDARY_DEFLATE_LEVEL,
                     attrib = ["_FillValue" => NaN32],
                 )
@@ -578,23 +582,27 @@ end
 # parameters are in the grid's `FT`, which `ECOSMO` requires.
 ecosmo_configuration = fabm_configuration(joinpath(pkgdir(NivaEcosmo), "data", "fabm.yaml"), FT)
 
-# `oslofjorden.jl`'s levels with 41-132 m split into eighteen 5.06 m levels, as in
-# `examples/oslofjorden_validation.jl`, where the split cut the Drammensfjord's salt-budget
-# diffusivity below 41 m by 2.6-7.7 times in 60 days. The mechanism, WENO's implicit vertical
-# diffusion ~|w|Δz on thick levels, is not specific to that grid; here it acts on the sill basins of
-# the fjords and on the coastal current's lower interface.
+# `oslofjorden.jl`'s top levels down to 41 m, then 10 m levels to 131 m and five levels thickening
+# from 13 to 28.5 m down to 232.5 m. `examples/oslofjorden_validation.jl` splits 41-132 m into
+# eighteen 5.06 m levels, which cut the Drammensfjord's salt-budget diffusivity below 41 m by
+# 2.6-7.7 times in 60 days (WENO's implicit vertical diffusion goes as |w|Δz). Here those levels set
+# the time step instead: flow up the steep slopes drives a single-column w of 2-5 cm/s in the bottom
+# cell, nearly unchanged up through the thin levels, and over the first 41 days of 2023 its |w|/Δz
+# held Δt at 67-186 s at CFL 0.3. 10 m levels halve that term. The graded levels below 131 m replace
+# a jump from 5.06 to 33.5 m at 132 m.
 #
-# Below 132 m, `oslofjorden.jl`'s 33.5 m layers, continued down the continental slope to -1137 m,
+# Below 232.5 m, `oslofjorden.jl`'s 33.5 m layers, continued down the continental slope to -1137 m,
 # against a deepest cell of 1153 m in `bathymetry.nc`. The 30 columns below the face, by at most
 # 16 m, are on the slope within 11 cells of the open edges, inside the sponge, and `PartialCellBottom`
 # clamps them to it. Thicker deep layers would cost the fjord basins, which reach 688 m, their
 # vertical structure. `grid.Lz` of 1137 m gives a barotropic wave speed of 106 m/s, so the split-explicit substep is
 # about 3 s.
 #
-# 59 levels on 396 x 315 columns is 7.4 M cells, the size of the Oslofjord validation grid.
+# 52 levels on 396 x 315 columns is 6.5 M cells.
 z_faces = vcat(
-    collect(range(-1137.0, -165.5; step = 33.5)),
-    collect(range(-132.0, -41.0; length = 19)),
+    collect(range(-1137.0, -232.5; step = 33.5)),
+    [-204.0, -180.0, -160.0, -144.0, -131.0],
+    collect(range(-121.0, -41.0; step = 10.0)),
     [-32.0, -25.0, -19.0, -14.5, -10.8, -7.9, -5.5, -3.7, -2.2, -1.0, 0.0],
 )
 
@@ -612,7 +620,7 @@ FjordConfig(
         z_faces   = z_faces,
         float_type = FT,
     ),
-    # `oslofjorden.jl`'s knobs, which the validation run takes unchanged.
+    # `oslofjorden.jl`'s knobs, which the validation run takes unchanged, but for `max_slope_factor`.
     bathymetry_config = DybdedataConfig(
         data_root             = data_root,
         output_file           = "bathymetry.nc",
@@ -636,8 +644,15 @@ FjordConfig(
         spike_ratio           = 0.5,
         # Must equal the `minimum_fractional_cell_height` the grid gives `PartialCellBottom`.
         minimum_cell_fraction = 0.2,
-        max_slope_factor      = 0.5,
+        # 0.4 rather than 0.5: the upslope w above the steepest slopes limits the time step. On
+        # `oslofjorden_validation` 0.25 took 34 m off a trench where 0.5 took 8 m (FjordSim's
+        # `DybdedataConfig`); `preserve_sills` restores the sill depths.
+        max_slope_factor      = 0.4,
         preserve_sills        = true,
+        # The western and northern open edges cut across the shelf slope, where an edge column can
+        # reach a level the column inside it does not, and the radiation condition stops acting on
+        # such a face. Run without it, the domain's fastest current reached 2.9-3.8 m/s.
+        raise_boundary_pockets = true,
         geonorge_cache        = true,
         regrid_cache          = false,
     ),
@@ -750,8 +765,17 @@ FjordConfig(
         # cell's detritus went from 5 to 4.2e5 mgC m⁻³ in 7 days with plain WENO, and the run's
         # bottom cells were NaN by day 21; bounded, it settles at 19 with phosphorus conserved to 2e-6.
         # The upper bound is far above any concentration these reach.
+        #
+        # T and S upwinded horizontally around the river mouths: WENO across a mouth's fresh front
+        # made water saltier than any source (35.43 beside the Driva; none exceeds 35.05) and a
+        # 2 m Surna column −1 °C. Three cells is WENO5's stencil, so no face outside reconstructs
+        # across a river column; 4.1 % of the wet cells.
         tracer_advection   = merge(
-            (T = WENO(FT), S = WENO(FT; bounds = (0, 40)), e = WENO(FT)),
+            (
+                T = RiverMouthAdvection(interior = WENO(FT), width_cells = 3),
+                S = RiverMouthAdvection(interior = WENO(FT; bounds = (0, 40)), width_cells = 3),
+                e = WENO(FT),
+            ),
             NamedTuple{ECOSMO_TRACERS}(map(_ -> WENO(FT), ECOSMO_TRACERS)),
             NamedTuple{NivaEcosmo.ECOSMO_SINKING_TRACERS}(
                 map(_ -> WENO(FT; bounds = FT.((0, 1e6))), NivaEcosmo.ECOSMO_SINKING_TRACERS),
@@ -838,11 +862,11 @@ FjordConfig(
             CheckpointWriter(interval = 12hours, cleanup = true),
         ),
         callbacks = (ProgressCallback(name = :progress, interval = 1hour, report = progress),),
-        # `oslofjorden.jl`'s. The advective CFL limits Δt, not `max_time_step`: the validation run
-        # took 25-32 s steps at 193 m, so this grid should take roughly 2.6 times that.
+        # The advective CFL limits Δt, not `max_time_step`. At `oslofjorden.jl`'s 0.3 the first
+        # 41 days of 2023 took 67-186 s steps; 0.5 is untested on this grid.
         time_stepping = AdaptiveTimeStep(
             initial_time_step    = 1second,
-            cfl                  = 0.3,
+            cfl                  = 0.5,
             max_time_step        = 3minutes,
             max_time_step_change = 1.01,
         ),
