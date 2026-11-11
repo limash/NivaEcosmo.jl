@@ -4,7 +4,7 @@
 
 | File | Content |
 |---|---|
-| `moro.jl` | Møre og Romsdal, 5.12-9.00°E by 62.00-63.43°N at ~500 m, 59 levels to 1137 m, the year 2023 |
+| `moro.jl` | FjordSim's `examples/moro/moro.jl` (Møre og Romsdal, 5.12-9.00°E by 62.00-63.43°N at ~500 m, 52 levels to 1137 m, the year 2023) with ECOSMO |
 | `Project.toml` | the environment: FjordSim from GitHub, NivaEcosmo from this repository |
 | `../data/fabm.yaml` | the ECOSMO parameters (A20 v3aa), the carbonate pH scale and the sediment's initial pools |
 | `../data/moro_ecosmo.yaml` | Moro's boundary, initial and river values of the ECOSMO tracers, with their seasonal cycle. Placeholders |
@@ -52,8 +52,8 @@ in this order: `prepare_bathymetry`, `download_initial_state`, `prepare_initial_
 `add_rivers`, `download_boundary_data`, `prepare_boundary_data`, `download_atmosphere`,
 `prepare_atmosphere`, `run_simulation`, `validate_simulation`.
 
-A changed `data/moro_ecosmo.yaml` needs `add_rivers` and `prepare_boundary_data` re-run. FjordSim's
-`docs/running.md` lists what else to re-run after a change.
+A changed `data/moro_ecosmo.yaml` needs `prepare_initial_state`, `add_rivers` and
+`prepare_boundary_data` re-run. FjordSim's `docs/running.md` lists what else to re-run after a change.
 
 ## Run on FjordSim's GCP VM
 

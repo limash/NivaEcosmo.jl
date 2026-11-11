@@ -17,7 +17,13 @@ export ECOSMO,
     ecosmo_surface_fluxes,
     fabm_configuration,
     ClipToMinimum,
-    ECOSMO_TRACERS
+    ECOSMO_TRACERS,
+    ecosmo_biogeochemistry_config,
+    ecosmo_gas_exchange,
+    ecosmo_boundaries,
+    ecosmo_initial_state,
+    ecosmo_rivers,
+    ecosmo_surface_writer
 
 using Adapt: Adapt, adapt
 using KernelAbstractions: @kernel, @index
@@ -56,5 +62,6 @@ include("biogeochemistry.jl")
 include("sediment.jl")
 include("boundary_conditions.jl")
 include("fabm_yaml.jl")
+include("fjordsim.jl")
 
 end # module

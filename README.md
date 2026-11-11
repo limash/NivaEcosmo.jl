@@ -23,6 +23,7 @@ FABM's `gotm/light`, the light model the configurations run with.
 | `src/sediment.jl` | `ecosmo_sediment`: `sed1`–`sed4` as an OceanBioME `BiogeochemicalSediment` |
 | `src/boundary_conditions.jl` | `ecosmo_surface_fluxes`: O₂ and CO₂ air-sea exchange as flux boundary conditions |
 | `src/fabm_yaml.jl` | `fabm_configuration`: parameters, light and initial values from a niva-ecosmo `fabm.yaml` |
+| `src/fjordsim.jl`, `ext/NivaEcosmoFjordSimExt.jl` | the FjordSim components (`ecosmo_boundaries`, ...), declared and implemented |
 | `data/` | input files: `fabm.yaml` (the A20 v3aa configuration the tests and the box model read), the box model's forcing and boundary values, and the FjordSim setups' tracer values |
 | `box_model/` | the Drammensfjorden box model and its comparison with the Fortran (see its README) |
 | `fjordsim_model/` | FjordSim setups running ECOSMO, with their own environment (see its README) |
@@ -110,25 +111,29 @@ mgC m⁻³ (Redfield), chlorophyll in mg m⁻³, `oxy`, `dic` and `alk` in mmol 
 
 ### From FjordSim
 
-`fjordsim_model/moro.jl` is a complete FjordSim setup running ECOSMO; `fjordsim_model/README.md`
-says how to install and run it. It follows FjordSim's `examples/oslofjorden_npzd.jl`, through the
-hooks FjordSim offers an out-of-tree setup:
+A setup that loads FjordSim and NCDatasets beside NivaEcosmo gets its FjordSim extension
+(`ext/NivaEcosmoFjordSimExt.jl`), whose components wrap FjordSim's through the hooks it offers an
+out-of-tree setup. Each tracer value is a function `(z, date, source) -> value`, with `source` the
+point's `T` and `S` and, given a source dataset (FjordSim's TOPAZ5-ECOSMO configs), its prepared
+values; without one, a profile.
 
-- **The model.** An `AbstractBiogeochemistryConfig`, the setup's `biogeochemistry_config`, whose
-  `Simulations.model_biogeochemistry(config, grid)` method builds `ECOSMO`, because `ECOSMO` needs
-  the grid and a setup file is evaluated before there is one. The sediment's pools are set there too, since they are not model fields.
-  `tracers` must name all of them, `(:T, :S, ECOSMO_TRACERS...)`, and so must a `NamedTuple`
-  `tracer_advection`: a tracer it omits is advected by `Centered()`.
-- **Gas exchange.** An `AbstractBoundaryConditionConfig` whose `boundary_condition_sides` returns
-  `ecosmo_surface_fluxes` as top conditions, one more piece of `boundary_condition_configs`.
-  FjordSim's `AirSeaFluxes` gives a top condition to T and S only.
-- **Open boundaries.** `OpenLateralBoundaryFromData` radiates every model tracer towards its
-  prepared series and raises for a tracer with none, so an `AbstractBoundaryDataConfig` wrapping the
-  NorKyst one appends all 17 to the prepared boundary file.
-- **Rivers.** A tracer the river file does not carry enters at zero. An `AbstractRiverConfig`
-  wrapping `NVERiversConfig` adds a series per tracer to its `river_series`.
-- **Initial state.** `FromInitialState` reads T, S, u and v only, so a wrapper of it adds the
-  ECOSMO tracers through `Simulations.resolve_initial_conditions`.
+- **`ecosmo_biogeochemistry_config`**, the setup's `biogeochemistry_config`: builds `ECOSMO` once
+  the grid exists, and sets the sediment's pools, which are not model fields. `tracers` must name
+  all of them, `(:T, :S, ECOSMO_TRACERS...)`, and so must a `NamedTuple` `tracer_advection`: a
+  tracer it omits is advected by `Centered()`.
+- **`ecosmo_gas_exchange`**, one more piece of `boundary_condition_configs`: the O₂ and CO₂ top
+  conditions. FjordSim's `AirSeaFluxes` gives one to T and S only.
+- **`ecosmo_boundaries(base; sources, tracers)`**: `OpenLateralBoundaryFromData` radiates every model
+  tracer towards its prepared series and raises for a tracer with none, so this appends all 17 to
+  `base`'s prepared boundary file, interpolating a daily `sources` file onto its hourly axis.
+- **`ecosmo_initial_state(base; sources, tracers)`**: appends them to `base`'s prepared initial
+  state, which `FromInitialState` then reads.
+- **`ecosmo_rivers(base, concentrations)`**: a tracer the river file does not carry enters at zero,
+  so this adds a series per tracer to `base`'s.
+- **`ecosmo_surface_writer`**: the surface of every ECOSMO field, the sediment and the gas fluxes.
+
+`fjordsim_model/moro.jl` runs ECOSMO from placeholder profiles; `fjordsim_model/README.md` says how
+to install and run it. FjordSim's `examples/roho/roho_ecosmo.jl` reads TOPAZ5-ECOSMO.
 
 ## Where the port differs from the Fortran
 
